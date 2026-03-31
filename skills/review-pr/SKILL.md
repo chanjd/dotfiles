@@ -24,8 +24,12 @@ disable-model-invocation: false
    - Bugs or logic errors
    - Violations of the conventions
    - Missing error handling at system boundaries
-   - Anything that would fail code review
 
-   Do not flag style issues already enforced by ruff.
+   Instruct the subagent: do not flag style issues enforced by ruff, do not suggest removing working intentional code, do not suggest deprecation cleanups or stylistic rewrites — only flag bugs and clear convention violations.
 
-3. Return a structured report with file:line references.
+3. Review the subagent's report critically. For each finding, categorize it as:
+   - **Bug** — incorrect behavior
+   - **Convention violation** — clear rule broken per CLAUDE.md
+   - **Opinion** — stylistic preference or debatable change
+
+4. Present the categorized summary to the user. Do not make any changes until the user explicitly instructs you to.
