@@ -10,7 +10,9 @@ git clone https://github.com/chanjd/dotfiles.git && bash dotfiles/install.sh
 
 Installs:
 - `~/.claude/CLAUDE.md` — behavioral defaults and conventions
+- `~/.claude/settings.json` — pre-commit ruff hook
 - `~/.claude/skills/` — slash command skills
+- `ruff` — required for the lint skill and pre-commit hook
 
 ## Skills
 
