@@ -20,4 +20,3 @@ Installs:
 - `changelog-generator` — generate changelog entry from branch commits
 - `test-fixing` — systematically fix failing tests by error group
 - `root-cause-tracing` — trace errors back to their original trigger
-test
