@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit*)",
+            "command": "FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\\.py$'); if [ -z \"$FILES\" ]; then exit 0; fi; echo \"$FILES\" | xargs ruff format 2>&1; echo \"$FILES\" | xargs ruff check --fix 2>&1; EXIT=$?; echo \"$FILES\" | xargs git add 2>/dev/null; exit $EXIT",
+            "statusMessage": "Running ruff lint..."
+          }
+        ]
+      }
+    ]
+  }
+}
