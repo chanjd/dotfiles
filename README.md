@@ -22,3 +22,4 @@ Installs:
 - `changelog-generator` — generate changelog entry from branch commits
 - `test-fixing` — systematically fix failing tests by error group
 - `root-cause-tracing` — trace errors back to their original trigger
+- `review-pr` — lint then subagent review of full branch diff before opening a PR
