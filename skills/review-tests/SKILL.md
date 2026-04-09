@@ -75,8 +75,8 @@ with open('.coverage.json') as f:
 for path, info in sorted(data['files'].items()):
     pct = info['summary']['percent_covered']
     missing = info['missing_lines']
-    missing_branches = info['missing_branches']
-    print(f'{path}: {pct:.1f}% | missing lines: {missing} | missing branches: {missing_branches}')
+    branches = ', '.join(f'{a}->{b}' for a, b in info['missing_branches'])
+    print(f'{path}: {pct:.1f}% | missing lines: {missing} | missing branches: {branches}')
 " 2>&1
 `
 
