@@ -8,7 +8,7 @@ disable-model-invocation: false
 
 !`
 # Locate a managed Python env (micromamba or conda).
-# Deliberately skips system python — bare `python` may not be the project env.
+# Deliberately skips system python — bare python may not be the project env.
 # If multiple envs exist, picks the first alphabetically; adjust if needed.
 PYTHON=$(ls $HOME/micromamba/envs/*/bin/python 2>/dev/null | head -1 || ls $HOME/.conda/envs/*/bin/python 2>/dev/null | head -1)
 
@@ -93,9 +93,7 @@ for path, info in sorted(data['files'].items()):
    - Match $SRC/pkg/foo.py → $TESTS/test_foo.py by filename convention
    - Files with no corresponding test file are **Untested** — record them, do not generate tests for them, flag them in the final report
 
-4. For each source file that has a corresponding test file, spawn parallel subagents to identify mutation gaps. Select model based on file complexity:
-   - Use Haiku if the file has no ML library imports and fewer than 10 functions
-   - Use Sonnet otherwise
+4. For each source file that has a corresponding test file, spawn PARALLEL subagents to identify mutation gaps across multiple files at the same time.
 
    Pass each subagent:
    - The full source file contents
@@ -120,10 +118,9 @@ for path, info in sorted(data['files'].items()):
    - Do not rewrite or duplicate existing tests
    - Do not add error handling for scenarios that cannot happen
    - Do not add type annotations, docstrings, or comments
-   - Use $RUN python -m pytest for any test execution
    - If no meaningful gaps exist, return: NO GAPS FOUND
 
-5. Spawn a single Sonnet subagent to review the full existing test suite. Pass it all test file contents combined. Ask it to identify:
+5. Spawn a single subagent to review the full existing test suite. Pass it all test file contents combined. Ask it to identify:
 
    - **Tautological** — assertion cannot fail regardless of whether the code under test is correct (asserting a value the test itself computed, asserting only that no exception was raised when a return value is assertable, asserting shape or type when actual values are accessible and meaningful)
    - **Redundant** — would pass or fail for the exact same reason as another test; removing it loses no unique behavioral coverage
