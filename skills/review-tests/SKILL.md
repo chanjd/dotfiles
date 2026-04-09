@@ -4,20 +4,71 @@ description: Evaluate test suite quality across coverage, mutation gaps, and tau
 disable-model-invocation: false
 ---
 
-## Detect repo structure
+## Detect environment and repo structure
 
-!`python -m pytest --version 2>/dev/null && echo "pytest:ok" || echo "pytest:missing"`
-!`cat pyproject.toml 2>/dev/null | grep -E '(tool\.pytest|tool\.coverage)' | head -20 || echo "(no pyproject coverage config)"`
-!`find src/ -name "*.py" ! -name "__init__.py" ! -name "_*.py" 2>/dev/null | sort`
-!`find tests/ -name "test_*.py" 2>/dev/null | sort`
+!`
+# Locate a managed Python env (micromamba or conda).
+# Deliberately skips system python — bare `python` may not be the project env.
+# If multiple envs exist, picks the first alphabetically; adjust if needed.
+PYTHON=$(ls $HOME/micromamba/envs/*/bin/python 2>/dev/null | head -1 || ls $HOME/.conda/envs/*/bin/python 2>/dev/null | head -1)
+
+if [ -z "$PYTHON" ]; then
+  echo "ERROR: no managed python env found under micromamba or conda. Cannot proceed."
+  exit 1
+fi
+
+ENV_NAME=$(basename $(dirname $(dirname $PYTHON)))
+RUN="micromamba run -n $ENV_NAME"
+
+# Verify pytest is available in the env
+$RUN python -m pytest --version 2>/dev/null && echo "pytest:ok" || echo "ERROR: pytest not found in env $ENV_NAME"
+
+# Detect src layout — expects src/ or fails explicitly
+SRC=$([ -d src ] && echo src || echo "")
+if [ -z "$SRC" ]; then
+  echo "ERROR: no src/ directory found. Skill expects src layout."
+  exit 1
+fi
+
+# Detect test directory
+TESTS=$([ -d tests ] && echo tests || ([ -d test ] && echo test) || echo "")
+if [ -z "$TESTS" ]; then
+  echo "ERROR: no tests/ or test/ directory found."
+  exit 1
+fi
+
+echo "ENV=$ENV_NAME"
+echo "RUN=$RUN"
+echo "SRC=$SRC"
+echo "TESTS=$TESTS"
+
+# List source and test files for mapping
+echo "--- source files ---"
+find $SRC/ -name "*.py" ! -name "__init__.py" ! -name "_*.py" | sort
+
+echo "--- test files ---"
+find $TESTS/ -name "test_*.py" | sort
+`
 
 ## Run coverage
 
-!`python -m pytest tests/ --cov=src --cov-branch --cov-report=term-missing --cov-report=json:.coverage.json -q 2>&1`
+!`
+PYTHON=$(ls $HOME/micromamba/envs/*/bin/python 2>/dev/null | head -1 || ls $HOME/.conda/envs/*/bin/python 2>/dev/null | head -1)
+ENV_NAME=$(basename $(dirname $(dirname $PYTHON)))
+RUN="micromamba run -n $ENV_NAME"
+SRC=$([ -d src ] && echo src)
+TESTS=$([ -d tests ] && echo tests || ([ -d test ] && echo test))
+
+$RUN python -m pytest $TESTS/ --cov=$SRC --cov-branch --cov-report=term-missing --cov-report=json:.coverage.json -q 2>&1
+`
 
 ## Coverage summary
 
-!`python -c "
+!`
+PYTHON=$(ls $HOME/micromamba/envs/*/bin/python 2>/dev/null | head -1 || ls $HOME/.conda/envs/*/bin/python 2>/dev/null | head -1)
+ENV_NAME=$(basename $(dirname $(dirname $PYTHON)))
+
+micromamba run -n $ENV_NAME python -c "
 import json
 with open('.coverage.json') as f:
     data = json.load(f)
@@ -26,20 +77,21 @@ for path, info in sorted(data['files'].items()):
     missing = info['missing_lines']
     missing_branches = info['missing_branches']
     print(f'{path}: {pct:.1f}% | missing lines: {missing} | missing branches: {missing_branches}')
-" 2>&1`
+" 2>&1
+`
 
 ---
 
-1. If pytest is missing, stop and tell the user. Do not proceed.
+1. If any ERROR lines appeared in the detect block, stop and report them to the user. Do not proceed.
 
-2. Parse the coverage output. For each source file under src/, record:
+2. Parse the coverage output. For each source file under $SRC, record:
    - Line and branch coverage percentage
    - Specific uncovered lines and branches
    - Flag files below 85% coverage
 
-3. Build a source-to-test mapping:
-   - For each file in src/, find its corresponding test file in tests/ by name convention (src/pkg/foo.py → tests/test_foo.py)
-   - Files with no corresponding test file are **Untested** — record them, do not attempt to generate tests for them, flag them in the final report
+3. Build a source-to-test mapping using the file lists from the detect block:
+   - Match $SRC/pkg/foo.py → $TESTS/test_foo.py by filename convention
+   - Files with no corresponding test file are **Untested** — record them, do not generate tests for them, flag them in the final report
 
 4. For each source file that has a corresponding test file, spawn parallel subagents to identify mutation gaps. Select model based on file complexity:
    - Use Haiku if the file has no ML library imports and fewer than 10 functions
@@ -49,6 +101,8 @@ for path, info in sorted(data['files'].items()):
    - The full source file contents
    - The full contents of its corresponding test file(s)
    - The uncovered lines and missing branches for that file from the coverage report
+   - The following environment variables for any test execution they need to perform:
+     ENV_NAME, RUN (e.g. `micromamba run -n $ENV_NAME`), SRC, TESTS
 
    Instruct each subagent to identify behavioral gaps — functions or branches where existing assertions would not fail if a single mutation was applied (flipped comparison, changed boolean operator, removed a condition, swapped arithmetic operator, changed a return value). For each gap found, produce a candidate entry in this format:
 
@@ -66,6 +120,7 @@ for path, info in sorted(data['files'].items()):
    - Do not rewrite or duplicate existing tests
    - Do not add error handling for scenarios that cannot happen
    - Do not add type annotations, docstrings, or comments
+   - Use $RUN python -m pytest for any test execution
    - If no meaningful gaps exist, return: NO GAPS FOUND
 
 5. Spawn a single Sonnet subagent to review the full existing test suite. Pass it all test file contents combined. Ask it to identify:
