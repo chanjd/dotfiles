@@ -99,8 +99,8 @@ for path, info in sorted(data['files'].items()):
    - The full source file contents
    - The full contents of its corresponding test file(s)
    - The uncovered lines and missing branches for that file from the coverage report
-   - The following environment variables for any test execution they need to perform:
-     ENV_NAME, RUN (e.g. `micromamba run -n $ENV_NAME`), SRC, TESTS
+   - The following environment variables:
+     SRC, TESTS
 
    Instruct each subagent to identify behavioral gaps — functions or branches where existing assertions would not fail if a single mutation was applied (flipped comparison, changed boolean operator, removed a condition, swapped arithmetic operator, changed a return value). For each gap found, produce a candidate entry in this format:
 
@@ -118,6 +118,7 @@ for path, info in sorted(data['files'].items()):
    - Do not rewrite or duplicate existing tests
    - Do not add error handling for scenarios that cannot happen
    - Do not add type annotations, docstrings, or comments
+   - Patch lazy imports (imported inside a function body) at the source package, not the calling module - the calling module never binds the name 
    - If no meaningful gaps exist, return: NO GAPS FOUND
 
 5. Spawn a single subagent to review the full existing test suite. Pass it all test file contents combined. Ask it to identify:
