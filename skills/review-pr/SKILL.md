@@ -11,7 +11,7 @@ disable-model-invocation: false
 !`BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); git diff $BASE..HEAD -- $(git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -Ev '\.(yml|yaml|md|cfg|txt|ipynb|toml|rst|json|tsv|csv)$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)')`
 
 ## Full changed files
-!`BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); for f in $(git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -Ev '\.(yml|yaml|md|cfg|txt|ipynb|toml|rst|json|tsv|csv)$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'); do echo "=== $f ==="; git show HEAD: "$f"; done
+!`BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); for f in $(git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -Ev '\.(yml|yaml|md|cfg|txt|ipynb|toml|rst|json|tsv|csv)$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'); do echo "=== $f ==="; git show HEAD:"$f"; done`
 
 ## Conventions
 !`cat ~/.claude/CLAUDE.md 2>/dev/null || echo "(no CLAUDE.md found)"`
@@ -56,5 +56,5 @@ If nothing relevant exists or if you judge the feature branch to be very simple,
 
 3. Merge both agents' outputs:
    - If agents disagree (Agent 1 says bug, Agent 2 says intentional per design), prefer Agent 2
-   - Present the merged list to the user, grouped by catagory
+   - Present the merged list to the user, grouped by category
    - Do not make any changes until the user explicitly instructs you to
