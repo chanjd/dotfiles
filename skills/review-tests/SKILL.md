@@ -49,17 +49,30 @@ find $SRC/ -name "*.py" ! -name "__init__.py" ! -name "_*.py" | sort
 echo "--- test files ---"
 find $TESTS/ -name "test_*.py" | sort
 `
+## Changed source files
+!`BASE=$(git merge-base HEAD origin-main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -E '\.py$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'`
 
-## Run coverage
-
+## Run coverage on changed file tests
 !`
 PYTHON=$(ls $HOME/micromamba/envs/*/bin/python 2>/dev/null | head -1 || ls $HOME/.conda/envs/*/bin/python 2>/dev/null | head -1)
 ENV_NAME=$(basename $(dirname $(dirname $PYTHON)))
 RUN="micromamba run -n $ENV_NAME"
 SRC=$([ -d src ] && echo src)
 TESTS=$([ -d tests ] && echo tests || ([ -d test ] && echo test))
+BASE=$(git merge-base HEAD origin-main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null)
 
-$RUN python -m pytest $TESTS/ --cov=$SRC --cov-branch --cov-report=term-missing --cov-report=json:.coverage.json -q 2>&1
+CHANGED_TESTS=""
+for src_file in $(git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -E '\.py$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'); do
+  base=$(basename "$src_file" .py)
+  test_file=$(find $TESTS -name "test_${base}.py" 2>/dev/null)
+  [ -n "$test_file" ] && CHANGED_TESTS="$CHANGED_TESTS $test_file"
+done
+
+if [ -z "$CHANGED_TESTS" ]; then
+  echo "No test files found for changed source files."
+else
+  $RUN python -m pytest $CHANGED_TESTS --cov=$SRC --cov-branch --cov-report=term-missing --cov-report=json:.coverage.json -q 2>&1
+fi
 `
 
 ## Coverage summary
@@ -89,18 +102,16 @@ for path, info in sorted(data['files'].items()):
    - Specific uncovered lines and branches
    - Flag files below 85% coverage
 
-3. Build a source-to-test mapping using the file lists from the detect block:
+3. Build a source-to-test mapping using only the changed source files from the branch diff:
    - Match $SRC/pkg/foo.py → $TESTS/test_foo.py by filename convention
-   - Files with no corresponding test file are **Untested** — record them, do not generate tests for them, flag them in the final report
+   - Changed files with no corresponding test file are **Untested** — flag in report
+   - Unchanged source files are out of scope - do not analyze them
 
-4. For each source file that has a corresponding test file, spawn PARALLEL subagents to identify mutation gaps across multiple files at the same time.
-
-   Pass each subagent:
+4. For each source file that has a corresponding test file, spawn PARALLEL subagents to identify mutation gaps across multiple files at the same time. Pass each subagent:
    - The full source file contents
    - The full contents of its corresponding test file(s)
    - The uncovered lines and missing branches for that file from the coverage report
-   - The following environment variables:
-     SRC, TESTS
+   - The following environment variables: SRC, TESTS
 
    Instruct each subagent to identify behavioral gaps — functions or branches where existing assertions would not fail if a single mutation was applied (flipped comparison, changed boolean operator, removed a condition, swapped arithmetic operator, changed a return value). For each gap found, produce a candidate entry in this format:
 
@@ -108,17 +119,17 @@ for path, info in sorted(data['files'].items()):
        MUTATION THAT WOULD SURVIVE: <what change to the source would not be caught>
        DISPOSITION: new_test | strengthen_existing
          new_test: this case has no natural home in existing tests
-         strengthen_existing: an existing test covers this area but its assertion is
-           too weak; name the specific existing test and describe how to strengthen it
-       CANDIDATE:
-         <pytest code if new_test, or the strengthened assertion if strengthen_existing>
+         strengthen_existing: an existing test covers this area but its assertion is too weak; name the specific existing test and describe how to strengthen it
+       CANDIDATE: <pytest code if new_test, or the strengthened assertion if strengthen_existing>
 
    Instruct each subagent:
-   - Only assert observable outputs, raised exceptions, or side effects — not implementation details or internal state
+   - Only assert observable outputs, raised exceptions, or side effects - not implementation details or internal state
    - Do not rewrite or duplicate existing tests
    - Do not add error handling for scenarios that cannot happen
    - Do not add type annotations, docstrings, or comments
-   - Patch lazy imports (imported inside a function body) at the source package, not the calling module - the calling module never binds the name 
+   - Patch lazy imports (imported inside a function body) at the source package, not the calling module - the calling module never binds the name
+   - For each gap, describe the specific input or state that would expose the weakness
+   - Report at most 5 mutation gaps per source file. If more exist, keep the 5 most likely to mask a real bug and note "plus N additional gaps omitted:" along with file:line of each omitted gap.
    - If no meaningful gaps exist, return: NO GAPS FOUND
 
 5. Spawn a single subagent to review the full existing test suite. Pass it all test file contents combined. Ask it to identify:
@@ -135,31 +146,25 @@ for path, info in sorted(data['files'].items()):
        REASON: <one sentence>
        FIX: strengthen assertion | remove test | add test for: <description>
 
-6. Present the full report to the user, structured as follows:
+6. Review the output from step 5 subagent yourself, do not pass the raw subagent outputs to the user. Evaluate each finding and coverage gap, discard anything you judge to be noise or not worth acting on, and present only your curated assessment:
 
-   **Coverage**
-   - Per-file percentages, flagging anything below 85%
-   - Uncovered lines and branches per file
-   - Untested source files with no test file at all
+  **Scope**: N source files changed, M with corresponding test files
 
-   **Mutation gap candidates** (per source file)
-   For each gap found, show the full candidate entry. Close this section with:
-   "Review each candidate. Keep as a new test if it pins a behavioral case worth
-   specifying permanently. Use strengthen_existing candidates to improve the named
-   existing test rather than adding a new one. Discard candidates that are trivial
-   or redundant."
+  **Findings** (only include sections that have findings)
 
-   **Test suite review**
-   - Tautological tests found
-   - Redundant tests found
-   - Missing error path tests
+  For each finding you kept, show:
+  - what the issue is (one line)
+  - Why it matters (one line)
+  - What to do about it (one line)
+
+  Group by source file. If a source file has no findings worth reporting, omit it entirely.
 
    **Summary**
-   - Files below 85% coverage: N
+   - Coverage: flag any source files below 85% test coverage
    - Untested files: N
-   - Mutation gap candidates: N (X new_test, Y strengthen_existing)
-   - Tautological tests: N
-   - Redundant tests: N
-   - Missing error paths: N
+   - Mutation gaps worth fixing: N
+   - Tautological/redundant tests worth fixing: N
+   - Tautological/redundant tests that should be removed: N
+   - Missing error paths worth adding: N
 
 7. Do not modify any files. Do not commit anything. Present findings only and wait for explicit instruction.
