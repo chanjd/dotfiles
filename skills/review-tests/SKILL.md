@@ -47,7 +47,7 @@ find $TESTS/ -name "test_*.py" | sort
 `
 
 ## Changed source files
-!`BASE=$(git merge-base HEAD origin-main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -E '\.py$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'`
+!`BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -E '\.py$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'`
 
 ## Run coverage on changed file tests
 !`
@@ -56,7 +56,7 @@ ENV_NAME=$(basename $(dirname $(dirname $PYTHON)))
 RUN="micromamba run -n $ENV_NAME"
 SRC=$([ -d src ] && echo src)
 TESTS=$([ -d tests ] && echo tests || ([ -d test ] && echo test))
-BASE=$(git merge-base HEAD origin-main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null)
+BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null)
 
 CHANGED_TESTS=""
 for src_file in $(git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -E '\.py$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'); do
@@ -129,7 +129,7 @@ for path, info in sorted(data['files'].items()):
    - Report at most 5 mutation gaps per source file. If more exist, keep the 5 most likely to mask a real bug and note "plus N additional gaps omitted:" along with file:line of each omitted gap.
    - If no meaningful gaps exist, return: NO GAPS FOUND
 
-5. Spawn a single subagent to review the full existing test suite. Pass it all test file contents combined. Ask it to identify:
+5. Spawn a single subagent to review the test files corresponding to changed source files. Pass it only those test file contents. Ask it to identify:
 
    - **Tautological** — assertion cannot fail regardless of whether the code under test is correct (asserting a value the test itself computed, asserting only that no exception was raised when a return value is assertable, asserting shape or type when actual values are accessible and meaningful)
    - **Redundant** — would pass or fail for the exact same reason as another test; removing it loses no unique behavioral coverage
