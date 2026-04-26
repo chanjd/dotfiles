@@ -11,12 +11,10 @@ disable-model-invocation: false
 # Deliberately skips system python — bare python may not be the project env.
 # If multiple envs exist, picks the first alphabetically; adjust if needed.
 PYTHON=$(ls $HOME/micromamba/envs/*/bin/python 2>/dev/null | head -1 || ls $HOME/.conda/envs/*/bin/python 2>/dev/null | head -1)
-
 if [ -z "$PYTHON" ]; then
   echo "ERROR: no managed python env found under micromamba or conda. Cannot proceed."
   exit 1
 fi
-
 ENV_NAME=$(basename $(dirname $(dirname $PYTHON)))
 RUN="micromamba run -n $ENV_NAME"
 
@@ -36,7 +34,6 @@ if [ -z "$TESTS" ]; then
   echo "ERROR: no tests/ or test/ directory found."
   exit 1
 fi
-
 echo "ENV=$ENV_NAME"
 echo "RUN=$RUN"
 echo "SRC=$SRC"
@@ -45,10 +42,10 @@ echo "TESTS=$TESTS"
 # List source and test files for mapping
 echo "--- source files ---"
 find $SRC/ -name "*.py" ! -name "__init__.py" ! -name "_*.py" | sort
-
 echo "--- test files ---"
 find $TESTS/ -name "test_*.py" | sort
 `
+
 ## Changed source files
 !`BASE=$(git merge-base HEAD origin-main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -E '\.py$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'`
 
