@@ -49,6 +49,9 @@ find $TESTS/ -name "test_*.py" | sort
 ## Changed source files
 !`BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -E '\.py$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'`
 
+## Changed file diffs
+!`BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); git diff --diff-filter=ACM $BASE..HEAD | grep -E '\.py$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'`
+
 ## Run coverage on changed file tests
 !`
 PYTHON=$(ls $HOME/micromamba/envs/*/bin/python 2>/dev/null | head -1 || ls $HOME/.conda/envs/*/bin/python 2>/dev/null | head -1)
@@ -120,7 +123,6 @@ for path, info in sorted(data['files'].items()):
          strengthen_existing: an existing test covers this area but its assertion is too weak; name the specific existing test and describe how to strengthen it
        CANDIDATE: <pytest code if new_test, or the strengthened assertion if strengthen_existing>
 
-   Instruct each subagent:
    - Only analyze mutation gaps in functions or branches that overlap with the diff. Unchanged code is out of scope even if it has coverage gaps.
    - Only assert observable outputs, raised exceptions, or side effects - not implementation details or internal state
    - Do not rewrite or duplicate existing tests
@@ -131,7 +133,7 @@ for path, info in sorted(data['files'].items()):
    - Report at most 5 mutation gaps per source file. If more exist, keep the 5 most likely to mask a real bug and note "plus N additional gaps omitted:" along with file:line of each omitted gap.
    - If no meaningful gaps exist, return: NO GAPS FOUND
 
-6. Spawn a single subagent to review the test files corresponding to changed source files. Pass it only those test file contents. Ask it to identify:
+5. Spawn a single subagent to review the test files corresponding to changed source files. Pass it only those test file contents. Ask it to identify:
 
    - **Tautological** — assertion cannot fail regardless of whether the code under test is correct (asserting a value the test itself computed, asserting only that no exception was raised when a return value is assertable, asserting shape or type when actual values are accessible and meaningful)
    - **Redundant** — would pass or fail for the exact same reason as another test; removing it loses no unique behavioral coverage
@@ -145,7 +147,7 @@ for path, info in sorted(data['files'].items()):
        REASON: <one sentence>
        FIX: strengthen assertion | remove test | add test for: <description>
 
-7. Review the output from step 5 subagent yourself, do not pass the raw subagent outputs to the user. Evaluate each finding and coverage gap, discard anything you judge to be noise or not worth acting on, and present only your curated assessment:
+6. Review the output from step 4 and step 5 subagents yourself, do not pass the raw subagent outputs to the user. Evaluate each finding and coverage gap, discard anything you judge to be noise or not worth acting on, and present only your curated assessment:
 
   **Scope**: N source files changed, M with corresponding test files
 
