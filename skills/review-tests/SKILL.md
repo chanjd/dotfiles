@@ -94,7 +94,7 @@ for path, info in sorted(data['files'].items()):
 
 1. If any ERROR lines appeared in the detect block, stop and report them to the user. Do not proceed.
 
-2. Parse the coverage output. For each source file under $SRC, record:
+2. Parse the coverage output. For each changed source file, record:
    - Line and branch coverage percentage
    - Specific uncovered lines and branches
    - Flag files below 85% coverage
@@ -104,14 +104,15 @@ for path, info in sorted(data['files'].items()):
    - Changed files with no corresponding test file are **Untested** — flag in report
    - Unchanged source files are out of scope - do not analyze them
 
-4. For each source file that has a corresponding test file, spawn PARALLEL subagents to identify mutation gaps across multiple files at the same time. Pass each subagent:
-   - The full source file contents
+4. For each changed source file that has a corresponding test file, spawn PARALLEL subagents to identify mutation gaps across multiple files at the same time. Pass each subagent:
+   - The full source file contents (for context)
+   - The branch diff for that file (to identify changed regions)
    - The full contents of its corresponding test file(s)
    - The uncovered lines and missing branches for that file from the coverage report
    - The following environment variables: SRC, TESTS
 
-   Instruct each subagent to identify behavioral gaps — functions or branches where existing assertions would not fail if a single mutation was applied (flipped comparison, changed boolean operator, removed a condition, swapped arithmetic operator, changed a return value). For each gap found, produce a candidate entry in this format:
-
+   Instruct each subagent:
+   - Identify behavioral gaps — functions or branches where existing assertions would not fail if a single mutation was applied (flipped comparison, changed boolean operator, removed a condition, swapped arithmetic operator, changed a return value). For each gap found, produce a candidate entry in this format:
        GAP: <one sentence describing the behavioral case not currently pinned>
        MUTATION THAT WOULD SURVIVE: <what change to the source would not be caught>
        DISPOSITION: new_test | strengthen_existing
@@ -120,6 +121,7 @@ for path, info in sorted(data['files'].items()):
        CANDIDATE: <pytest code if new_test, or the strengthened assertion if strengthen_existing>
 
    Instruct each subagent:
+   - Only analyze mutation gaps in functions or branches that overlap with the diff. Unchanged code is out of scope even if it has coverage gaps.
    - Only assert observable outputs, raised exceptions, or side effects - not implementation details or internal state
    - Do not rewrite or duplicate existing tests
    - Do not add error handling for scenarios that cannot happen
@@ -129,7 +131,7 @@ for path, info in sorted(data['files'].items()):
    - Report at most 5 mutation gaps per source file. If more exist, keep the 5 most likely to mask a real bug and note "plus N additional gaps omitted:" along with file:line of each omitted gap.
    - If no meaningful gaps exist, return: NO GAPS FOUND
 
-5. Spawn a single subagent to review the test files corresponding to changed source files. Pass it only those test file contents. Ask it to identify:
+6. Spawn a single subagent to review the test files corresponding to changed source files. Pass it only those test file contents. Ask it to identify:
 
    - **Tautological** — assertion cannot fail regardless of whether the code under test is correct (asserting a value the test itself computed, asserting only that no exception was raised when a return value is assertable, asserting shape or type when actual values are accessible and meaningful)
    - **Redundant** — would pass or fail for the exact same reason as another test; removing it loses no unique behavioral coverage
@@ -143,7 +145,7 @@ for path, info in sorted(data['files'].items()):
        REASON: <one sentence>
        FIX: strengthen assertion | remove test | add test for: <description>
 
-6. Review the output from step 5 subagent yourself, do not pass the raw subagent outputs to the user. Evaluate each finding and coverage gap, discard anything you judge to be noise or not worth acting on, and present only your curated assessment:
+7. Review the output from step 5 subagent yourself, do not pass the raw subagent outputs to the user. Evaluate each finding and coverage gap, discard anything you judge to be noise or not worth acting on, and present only your curated assessment:
 
   **Scope**: N source files changed, M with corresponding test files
 
