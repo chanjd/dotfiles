@@ -158,7 +158,7 @@ for path, info in sorted(data['files'].items()):
   - Why it matters (one line)
   - What to do about it (one line)
 
-  Group by source file. If a source file has no findings worth reporting, omit it entirely.
+  Group by source file. Do not include CANDIDATE code blocks in the output. If a source file has no findings worth reporting, omit it entirely.
 
    **Summary**
    - Coverage: flag any source files below 85% test coverage
