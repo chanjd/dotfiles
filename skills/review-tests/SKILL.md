@@ -7,23 +7,25 @@ disable-model-invocation: false
 ## Detect environment and repo structure
 
 !`
-# Locate a managed Python env (micromamba or conda).
-# Deliberately skips system python — bare python may not be the project env.
-# If multiple envs exist, picks the first alphabetically; adjust if needed.
+# Locate a Python with pytest. Try managed envs first, fall back to bare python.
 PYTHON=$(ls $HOME/.local/share/mamba/envs/*/bin/python 2>/dev/null | head -1 || \
          ls $HOME/micromamba/envs/*/bin/python 2>/dev/null | head -1 || \
          ls $HOME/.conda/envs/*/bin/python 2>/dev/null | head -1)
 
-if [ -z "$PYTHON" ]; then
-  echo "ERROR: no managed python env found under micromamba or conda. Cannot proceed."
+if [ -n "$PYTHON" ]; then
+  ENV_NAME=$(basename $(dirname $(dirname $PYTHON)))
+  RUN="micromamba run -n $ENV_NAME"
+elif command -v python >/dev/null 2>&1 && python -m pytest --version >/dev/null 2>&1; then
+  PYTHON=$(command -v python)
+  ENV_NAME="(system)"
+  RUN=""
+else
+  echo "ERROR: no managed python env found and bare python has no pytest. Cannot proceed."
   exit 1
 fi
 
-ENV_NAME=$(basename $(dirname $(dirname $PYTHON)))
-RUN="micromamba run -n $ENV_NAME"
-
-# Verify pytest is available in the env
-$RUN python -m pytest --version 2>/dev/null && echo "pytest:ok" || echo "ERROR: pytest not found in env $ENV_NAME"
+# Verify pytest is available
+$RUN python -m pytest --version 2>/dev/null && echo "pytest:ok" || echo "ERROR: pytest not found in $ENV_NAME"
 
 # Detect source layout — supports src/ layout or flat layout (any top-level package dir)
 if [ -d src ]; then
@@ -73,8 +75,15 @@ find $TESTS/ -name "test_*.py" | sort
 PYTHON=$(ls $HOME/.local/share/mamba/envs/*/bin/python 2>/dev/null | head -1 || \
          ls $HOME/micromamba/envs/*/bin/python 2>/dev/null | head -1 || \
          ls $HOME/.conda/envs/*/bin/python 2>/dev/null | head -1)
-ENV_NAME=$(basename $(dirname $(dirname $PYTHON)))
-RUN="micromamba run -n $ENV_NAME"
+if [ -n "$PYTHON" ]; then
+  ENV_NAME=$(basename $(dirname $(dirname $PYTHON)))
+  RUN="micromamba run -n $ENV_NAME"
+elif command -v python >/dev/null 2>&1 && python -m pytest --version >/dev/null 2>&1; then
+  PYTHON=$(command -v python)
+  RUN=""
+else
+  echo "ERROR: no python with pytest found" >&2; exit 1
+fi
 
 REPO=$(git rev-parse --show-toplevel 2>/dev/null || ls -d /workspaces/*/ 2>/dev/null | head -1 | sed 's|/$||')
 if [ -z "$REPO" ]; then
@@ -84,16 +93,21 @@ fi
 SRC=$([ -d "$REPO/src" ] && echo "$REPO/src" || (find "$REPO" -maxdepth 3 -name "__init__.py" ! -path "*/.git/*" ! -path "*/tests/*" ! -path "*/test/*" 2>/dev/null | xargs -I{} dirname {} | grep -v "^$REPO$" | sort -u | head -1))
 TESTS=$([ -d "$REPO/tests" ] && echo "$REPO/tests" || ([ -d "$REPO/test" ] && echo "$REPO/test"))
 BASE=$(git -C "$REPO" merge-base HEAD origin/main 2>/dev/null || git -C "$REPO" merge-base HEAD origin/master 2>/dev/null)
+if [ -z "$BASE" ]; then
+  echo "ERROR: cannot determine base branch (no origin/main or origin/master)" >&2; exit 1
+fi
 
-REPORT=$(mktemp /tmp/spatial_tx_coverage_XXXXXX.json)
+REPORT=$(mktemp /tmp/coverage_XXXXXX.json)
 
+CHANGED_SRC=""
 CHANGED_TESTS=""
 for src_file in $(git -C "$REPO" diff --name-only --diff-filter=ACM $BASE..HEAD | grep -E '\.py$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'); do
+  CHANGED_SRC="$CHANGED_SRC $src_file"
   base=$(basename "$src_file" .py)
   if [ "$base" = "__init__" ] || [ "$base" = "__main__" ]; then
     parent=$(basename $(dirname "$src_file"))
     suffix=${base#__}; suffix=${suffix%__}
-    test_file=$(find "$TESTS" \( -name "test_${parent}_${suffix}.py" -o -name "test_${parent}.py" \) 2>/dev/null | head -1)
+    test_file=$(find "$TESTS" \( -name "test_${parent}_${suffix}.py" -o -name "test_${parent}.py" \) 2>/dev/null)
   else
     test_file=$(find "$TESTS" -name "test_${base}.py" 2>/dev/null)
   fi
@@ -105,10 +119,15 @@ if [ -z "$CHANGED_TESTS" ]; then
 else
   PYTHONPATH="$TESTS" $RUN python -m pytest $CHANGED_TESTS --cov="$SRC" --cov-branch --cov-report=term-missing --cov-report=json:"$REPORT" -q 2>&1
   $RUN python -c "
-import json
+import json, os
+repo = '$REPO'
+changed_rel = [f for f in '$CHANGED_SRC'.split() if f]
+changed_abs = {os.path.join(repo, f) for f in changed_rel}
 with open('$REPORT') as f:
     data = json.load(f)
 for path, info in sorted(data['files'].items()):
+    if changed_abs and path not in changed_abs and not any(path.endswith('/' + f) for f in changed_rel):
+        continue
     pct = info['summary']['percent_covered']
     missing = info['missing_lines']
     branches = ', '.join(f'{a}->{b}' for a, b in info['missing_branches'])
@@ -152,10 +171,11 @@ rm -f "$REPORT"
          strengthen_existing: an existing test covers this area but its assertion is
            too weak; name the specific existing test and describe how to strengthen it
        CANDIDATE:
-         <unittest.TestCase code if new_test, or the strengthened assertion if strengthen_existing>
+         <test code matching the style of the existing test file>
 
-   The project uses stdlib unittest (not pytest). Candidates must be valid unittest.TestCase methods.
-   Tests import source modules via sys.path.insert at the top of each test file — do not change import style.
+   Candidates must match the testing style of the existing test files (detect from the file: pytest-style
+   plain assert functions/classes, or unittest.TestCase subclasses). Do not change the import style
+   already used in the test file.
 
    Instruct each subagent:
    - Only analyze mutation gaps in functions or branches that overlap with the diff. Unchanged code is out of scope even if it has coverage gaps.
@@ -168,7 +188,7 @@ rm -f "$REPORT"
    - Report at most 5 mutation gaps per source file. If more exist, keep the 5 most likely to mask a real bug and note "plus N additional gaps omitted:" along with file:line of each omitted gap.
    - If no meaningful gaps exist, return: NO GAPS FOUND
 
-5. Spawn a single subagent to review the test files corresponding to changed source files. Pass it only those test file contents. Ask it to identify:
+5. Spawn a single subagent to review the test files corresponding to changed source files. Pass it those test file contents and the same scoped source context used in step 4 (the enclosing functions/classes for changed lines — same scope rules). Ask it to identify:
 
    - **Tautological** — assertion cannot fail regardless of whether the code under test is correct (asserting a value the test itself computed, asserting only that no exception was raised when a return value is assertable, asserting shape or type when actual values are accessible and meaningful)
    - **Redundant** — would pass or fail for the exact same reason as another test; removing it loses no unique behavioral coverage
