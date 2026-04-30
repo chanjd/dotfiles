@@ -190,7 +190,7 @@ rm -f "$REPORT"
 
 5. Spawn a single subagent to review the test files corresponding to changed source files. Pass it those test file contents and the same scoped source context used in step 4 (the enclosing functions/classes for changed lines — same scope rules). Ask it to identify:
 
-   - **Tautological** — assertion cannot fail regardless of whether the code under test is correct (asserting a value the test itself computed, asserting only that no exception was raised when a return value is assertable, asserting shape or type when actual values are accessible and meaningful)
+   - **Tautological** — assertion cannot fail regardless of whether the code under test is correct (asserting a value the test itself computed, asserting a value determined entirely by mock setup rather than code logic, asserting only that no exception was raised when a return value is assertable, asserting shape or type when actual values are accessible and meaningful)
    - **Redundant** — would pass or fail for the exact same reason as another test; removing it loses no unique behavioral coverage
    - **Missing error paths** — exception or error branches visible in the source with no corresponding test
 
