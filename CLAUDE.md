@@ -7,14 +7,15 @@
 - Use plan mode for verification steps, not just building
 
 ### Subagent Strategy
-- Use subagents to keep the main context window clean
-- Offload research, exploration, and parallel analysis to subagents
-- One task per subagent for focused execution
-- Model selection:
-  - Sonnet — default for most subagents (coding, research, moderate reasoning)
-  - Opus — hard reasoning only (architecture, complex planning, subtle debugging)
-  - Haiku — simple or parallelizable tasks (lookups, classification, formatting)
-- Use `isolation: "worktree"` only when the subagent will make code changes that could conflict with the main working tree; skip it for read-only subagents
+- Two axes, decided per sub-task:
+  - Delegate vs inline by context hygiene — offload bulky read/run/iterate work; keep the judgment spine (intent, design, contracts, done-call) inline.
+  - Model by task difficulty, not by "it's a subagent":
+    - Haiku — describe/lookup/format (verify its specifics — it guesses at gaps)
+    - Sonnet — understand; default for coding, research, integration
+    - Opus — audit: contract-break/completeness, subtle debugging, hard reasoning; reserve it
+- Widen a subagent's INPUT before upgrading its model: point to files it reads itself (don't paste), give it the blast radius + goal. A well-scoped Sonnet beats a narrow-scope Opus.
+- Each delegated result returns its conclusion + the cheapest way to verify it (trace for a bug, conformance+deviations for code, file:line cites for exploration); the subagent self-verifies the executable part first.
+- One task per subagent. `isolation: "worktree"` only for subagents making conflicting code changes; skip for read-only.
 
 ### Memory and Lessons
 - CLAUDE.md is for instructions and rules (written by the user)

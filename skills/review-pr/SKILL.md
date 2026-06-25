@@ -1,60 +1,85 @@
 ---
 name: review-pr
-description: Review the full branch diff via subagent before opening a PR. Ruff linting is handled automatically by hooks on commit.
+description: Review the branch diff before opening a PR via two Sonnet subagents — Agent 1 (local code correctness) and Agent 2 (completeness / contract / provenance, given the change's blast radius + intent). Classifies changed files by modality so data/config/docs get the right lens instead of being silently dropped. Ruff linting is handled by commit hooks.
 disable-model-invocation: false
 ---
 
 ## Fetch latest remote
-!`git fetch origin 2>&1`
+!`git fetch origin 2>&1 | tail -3`
 
-## Branch diff
-!`BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); git diff $BASE..HEAD -- $(git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -Ev '\.(yml|yaml|md|cfg|txt|ipynb|toml|rst|json|tsv|csv)$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)')`
-
-## Full changed files
-!`BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); for f in $(git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -Ev '\.(yml|yaml|md|cfg|txt|ipynb|toml|rst|json|tsv|csv)$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'); do echo "=== $f ==="; git show HEAD:"$f"; done`
+## Base + ALL changed files (classification happens below — nothing is pre-excluded here)
+!`BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); echo "BASE=$BASE"; git diff --name-status --diff-filter=ACMR $BASE..HEAD 2>&1`
 
 ## Conventions
 !`cat ~/.claude/CLAUDE.md 2>/dev/null || echo "(no CLAUDE.md found)"`
 
-## Project context
-Search for project-level design docs, architecture notes, or specs relevant to the files changed in this diff/feature branch. 
-1. Check memory files for references to relevant documentation.
-2. If memory doesn't point to anything, check in files like AGENTS.md, CLAUDE.md, plans dir, and any markdown files in the repo root or docs/ directory. Pass whatever you find that is relevant to Agent 2.
-If nothing relevant exists or if you judge the feature branch to be very simple, skip Agent 2 and run Agent 1 only.
-
 ---
 
-1. Spawn Agent 1 (Sonnet subagent) - correctness review. Pass it the branch diff and conventions only. Ask it to identify:
-   - Bugs or logic errors
-   - Violations of the conventions
-   - Missing error handling at system boundaries
-   - Abstractions or helpers introduced in this diff with only one caller
-   - Derived state stored as a variable or field when it could be computed from existing state
+You are orchestrating a pre-PR review. The lesson this skill encodes: a diff-only review checks whether the change is *correct*, not whether it is *complete*; omissions are invisible to a diff. So Agent 2 gets the change's blast radius and intent, and every changed file is routed to a lens by modality rather than dropped by extension. Do the steps in order.
 
-   Instruct Agent 1:
-   - Do not flag style issues enforced by ruff
-   - Do not suggest removing working intentional code
-   - Do not suggest deprecation cleanups or stylistic rewrites
-   - Before reporting a bug, use grep or read to trace callers and verify the bug actually manifests - do not report based on pattern matching alone
-   - Output format per finding (strict):
-     [BUG|VIOLATION] file:line - description
-     Trace: caller() -> callee() - one-line explanation of how the bug manifests
-   - If no bugs or violations found, output: "No issues found."
+### Step 0 — Establish intent + provenance context (the yardstick)
+- Determine what the branch is SUPPOSED to do, from the PR/MR description if present, the commit messages (`git log <BASE>..HEAD`), and any design doc the changes point at (check memory and `docs/`). Write a short intent summary — Agent 2 measures completeness against it. If intent is genuinely unclear, ask the user ONE question instead of guessing.
+- Capture any provenance / per-run context the user gives (e.g. "these config paths are per-run", "`vendor/` is upstream"). If none, you will infer it in Step 1.
 
-2. Spawn Agent 2 (Sonnet subagent) - architectural review. Pass it the full changed files and project context. Ask it to identify:
-   - Functions or methods whose signature or return shape changed, where callers outside this diff are not updated
-   - Implementation that contradicts the design intent described in project context
-   - Integration issues: changed contracts, missing updates to related modules, broken assumptions in code that imports from changed files
+### Step 1 — Classify every changed file (route, never silently exclude)
+Bucket each changed file on two axes and REPORT the routing so nothing vanishes unannounced:
+- **Modality**: code (`.py .nf .groovy .sh .R .js .ts .go ...`) / config (`.yaml .toml .cfg .ini .config`) / data (`.tsv .csv .parquet .npy`, large `.json`) / docs (`.md .rst .txt`) / notebook (`.ipynb`) / binary. **Path overrides beat extension**: `*/data/* */sample_metadata/* */fixtures/*` → data; `vendor/ third_party/ generated/ *_pb2*` → vendored/generated.
+- **Provenance**: contract-built (ours) / one-time-or-historical (e.g. a docstring saying "one-time") / vendored / generated / data. Infer from directory conventions, file headers/`@generated`, git history (single bulk-add vs incremental), manifests, and any provenance docs. Treat any marker as a cue to verify against git/structure, not as gospel.
+- **Lens + input projection per modality**:
+  - code → full diff + full current contents (to both agents)
+  - config → full diff (semantic / key / cross-reference review)
+  - data → header + a few sample rows + row count ONLY — never line-review a data file
+  - docs → list; check claim-accuracy only if they describe changed behavior
+  - notebook → review code cells as code; ignore output cells
+  - binary / generated / vendored → skip content; note provenance
 
-   Instruct Agent 2:
-   - Use grep to find callers of changed functions outside the diff before reporting a contract break
-   - Do not duplicate correctness findings - assume Agent 1 handles line-level bugs
-   - Output format per finding (strict):
-     [CONTRACT_BREAK|DESIGN_MISMATCH] file:line - description
-     Evidence: file:line where the broken caller/consumer lives
-   - If implementation matches design and no contract breaks found, output: "No issues found."
+### Step 2 — Compute the blast radius (Agent 2's key input)
+Find the change's reverse dependencies: changed/removed symbols (`def`/`class`/`function` names), renamed config keys, and produced OUTPUTS — then grep the repo for consumers OUTSIDE the changed files. Starting point:
+```
+BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master)
+CHANGED=$(git diff --name-only $BASE..HEAD)
+SYMS=$(git diff $BASE..HEAD -- '*.py' '*.nf' '*.sh' | grep -E '^[-+].*\b(def|class|function|func)\b' \
+       | sed -E 's/.*\b(def|class|function|func)\s+([A-Za-z_][A-Za-z0-9_]*).*/\2/' | sort -u)
+for s in $SYMS; do echo "== $s =="; git grep -nI -w "$s" | grep -vF -f <(printf '%s\n' $CHANGED) | head -20; done
+```
+Also grep for any renamed config keys / changed output identifiers by hand. Hand the consumer list to Agent 2.
+**KNOWN LIMIT — tell Agent 2 explicitly:** symbol-grep finds callers/users but NOT output-format consumers or decoupled duplicates (no shared symbol). Agent 2 must reason about those separately; they are otherwise covered by tests, not review.
 
-3. Merge both agents' outputs:
-   - If agents disagree (Agent 1 says bug, Agent 2 says intentional per design), prefer Agent 2
-   - Present the merged list to the user, grouped by category
-   - Do not make any changes until the user explicitly instructs you to
+### Step 3 — Spawn Agent 1 (Sonnet) — LOCAL code correctness
+Pass it the CODE files only (diff + contents) and the conventions. It stays local — it is NOT responsible for distant consumers (Agent 2 owns that). Ask it to find:
+- Bugs / logic errors
+- Missing error handling at system boundaries (file/IO, external-data shape assumptions, CLI args)
+- Abstractions/helpers introduced with only one caller
+- Derived state stored when it could be computed from existing state
+- Convention violations — **provenance-calibrated**: do not flag vendored / one-time / generated code for conventions it was never built to.
+
+Instruct Agent 1:
+- Skip ruff-enforced style; don't suggest removing working intentional code; don't suggest deprecation/stylistic rewrites.
+- Trace the data/call path to confirm a bug actually manifests before reporting — no pattern-matching.
+- Output per finding (strict):
+  `[BUG|BOUNDARY|ABSTRACTION|DERIVED-STATE|VIOLATION] file:line - description`
+  `Manifest: how/when it actually goes wrong`
+- If nothing: `No issues found.`
+
+### Step 4 — Spawn Agent 2 (Sonnet) — completeness / contract / provenance / data
+Pass it: the full diff, the **blast-radius consumer list**, the **intent summary** (yardstick), the **provenance / per-run context**, and the **data previews**. Ask for these sections:
+1. **COMPLETENESS / PROPAGATION** — from the blast radius, list consumers NOT updated that are now stale/broken; classify each *live-break* vs *historical/one-time* (provenance-exempt). Include consumers of the change's OUTPUTS, and **explicitly consider OUT-OF-REPO / alternate-reader consumers of any written artifact** (e.g. a file later read with `anndata` vs raw `h5py`), not just in-repo symbol callers.
+2. **CONTRACT INTEGRITY** — signature / return / config-key / data-schema changed where a consumer wasn't updated; implementation contradicting the stated intent. Watch for a **sibling that should have changed in lockstep** (e.g. a validator paired with a formatter).
+3. **DATA-LENS** — for data files, referential integrity ONLY: do keys/IDs match what code/config expect; is the schema consistent with sibling data files. NOT line review.
+4. **PROVENANCE NOTES** — per file/consumer, its class and how it shaped the judgment. **Distinguish PER-RUN config** (paths/params edited each run → NOT a finding) **from STRUCTURAL config gaps** (e.g. a key-map missing a new entry → a finding).
+5. **VERDICT** — given intent, did the change propagate completely? Separate genuine omissions from intentional / per-run / historical non-changes.
+
+Instruct Agent 2:
+- Read actual code, trace before asserting, cite real `file:line`. A diff-only inference (e.g. "this lost its `raise`, so X is now silent") MUST be checked against the caller before reporting — that exact error has happened.
+- Output per finding (strict):
+  `[STALE-CONSUMER|CONTRACT-BREAK|DESIGN-MISMATCH|DATA-INTEGRITY] file:line - description`
+  `Evidence: file:line of the consumer/mismatch | classification: live-break | historical | per-run`
+- If nothing: `No issues found.`
+
+### Step 5 — Merge and present
+- On disagreement (Agent 1 says bug, Agent 2 says intentional-per-design), prefer Agent 2.
+- Curate yourself — drop noise, keep findings worth acting on. Verify any flipped-conclusion finding cheaply before relaying it. Present grouped by concern, each as: what / why it matters / suggested fix.
+- Do NOT make any changes until the user explicitly instructs you to.
+
+### When to escalate to Opus (high-stakes only)
+Both agents are Sonnet by default — the leverage is the widened input (blast radius + intent + classified lenses), not the model tier; on a real trial, Sonnet-with-blast-radius outperformed narrow-scope Opus and avoided a diff-only false positive Opus made. Escalate **Agent 2 to Opus** only for high-stakes changes (security-sensitive, irreversible data migrations, broad refactors): Opus is the tier that catches latent out-of-repo / alternate-reader consequences a Sonnet pass can miss. That escalation is worth running as a Workflow (per-agent effort control); the default 2-Sonnet path does not need one.
