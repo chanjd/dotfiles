@@ -7,25 +7,34 @@ disable-model-invocation: false
 ## Detect environment and repo structure
 
 !`
-# Locate a Python with pytest. Try managed envs first, fall back to bare python.
-PYTHON=$(ls $HOME/.local/share/mamba/envs/*/bin/python 2>/dev/null | head -1 || \
-         ls $HOME/micromamba/envs/*/bin/python 2>/dev/null | head -1 || \
-         ls $HOME/.conda/envs/*/bin/python 2>/dev/null | head -1)
+# Locate a Python with pytest. Discover env prefixes from micromamba itself
+# (location-agnostic — works whether envs live under ~/scratch/conda/envs,
+# ~/.local/share/mamba/envs, ~/micromamba/envs, etc.), then pick the first env
+# that actually has pytest (not merely the alphabetically-first env).
+ENV_PATHS=$(micromamba env list 2>/dev/null | awk '$NF ~ /\// {print $NF}')
+[ -z "$ENV_PATHS" ] && ENV_PATHS=$(ls -d $HOME/scratch/conda/envs/*/ \
+  $HOME/.local/share/mamba/envs/*/ $HOME/micromamba/envs/*/ \
+  $HOME/.conda/envs/*/ 2>/dev/null)
 
-if [ -n "$PYTHON" ]; then
-  ENV_NAME=$(basename $(dirname $(dirname $PYTHON)))
-  RUN="micromamba run -n $ENV_NAME"
-elif command -v python >/dev/null 2>&1 && python -m pytest --version >/dev/null 2>&1; then
-  PYTHON=$(command -v python)
-  ENV_NAME="(system)"
-  RUN=""
-else
-  echo "ERROR: no managed python env found and bare python has no pytest. Cannot proceed."
-  exit 1
+ENV_NAME=""; RUN=""
+for prefix in $ENV_PATHS; do
+  name=$(basename "$prefix")
+  if micromamba run -n "$name" python -m pytest --version >/dev/null 2>&1; then
+    ENV_NAME="$name"; RUN="micromamba run -n $name"; break
+  fi
+done
+
+if [ -z "$ENV_NAME" ]; then
+  if command -v python >/dev/null 2>&1 && python -m pytest --version >/dev/null 2>&1; then
+    ENV_NAME="(system)"; RUN=""
+  else
+    echo "ERROR: no env with pytest found (searched micromamba envs + common roots, and bare python). Run scripts/setup/setup_envs.sh first."
+    exit 1
+  fi
 fi
 
 # Verify pytest is available
-$RUN python -m pytest --version 2>/dev/null && echo "pytest:ok" || echo "ERROR: pytest not found in $ENV_NAME"
+$RUN python -m pytest --version 2>/dev/null && echo "pytest:ok in $ENV_NAME" || echo "ERROR: pytest not found in $ENV_NAME"
 
 # Detect source layout — supports src/ layout or flat layout (any top-level package dir)
 if [ -d src ]; then
@@ -69,20 +78,47 @@ find $TESTS/ -name "test_*.py" | sort
 
 !`BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); git diff --diff-filter=ACM $BASE..HEAD -- $(git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -E '\.py$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)')`
 
+## Removed code + candidate dead tests (deleted files, removed defs/classes, and tests that still reference them)
+
+!`
+BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null)
+TESTS=$([ -d tests ] && echo tests || { [ -d test ] && echo test; })
+echo "--- deleted files ---"
+git diff --name-only --diff-filter=D "$BASE"..HEAD 2>/dev/null
+echo "--- removed defs/classes (from deleted + modified files) ---"
+REMOVED=$(git diff --diff-filter=DM "$BASE"..HEAD -- '*.py' 2>/dev/null | grep -E '^-[[:space:]]*(def|class) ' | sed -E 's/^-[[:space:]]*(def|class)[[:space:]]+([A-Za-z_][A-Za-z0-9_]*).*/\2/' | sort -u)
+echo "${REMOVED:-(none)}"
+echo "--- tests referencing removed symbols (CANDIDATE dead tests) ---"
+if [ -n "$TESTS" ] && [ -n "$REMOVED" ]; then
+  for s in $REMOVED; do
+    hits=$(grep -rnw --include='*.py' "$s" "$TESTS" 2>/dev/null | head -10)
+    [ -n "$hits" ] && { echo "== $s =="; echo "$hits"; }
+  done
+else
+  echo "(no removed symbols, or no tests dir)"
+fi
+`
+
 ## Run coverage and summarize
 
 !`
-PYTHON=$(ls $HOME/.local/share/mamba/envs/*/bin/python 2>/dev/null | head -1 || \
-         ls $HOME/micromamba/envs/*/bin/python 2>/dev/null | head -1 || \
-         ls $HOME/.conda/envs/*/bin/python 2>/dev/null | head -1)
-if [ -n "$PYTHON" ]; then
-  ENV_NAME=$(basename $(dirname $(dirname $PYTHON)))
-  RUN="micromamba run -n $ENV_NAME"
-elif command -v python >/dev/null 2>&1 && python -m pytest --version >/dev/null 2>&1; then
-  PYTHON=$(command -v python)
-  RUN=""
-else
-  echo "ERROR: no python with pytest found" >&2; exit 1
+ENV_PATHS=$(micromamba env list 2>/dev/null | awk '$NF ~ /\// {print $NF}')
+[ -z "$ENV_PATHS" ] && ENV_PATHS=$(ls -d $HOME/scratch/conda/envs/*/ \
+  $HOME/.local/share/mamba/envs/*/ $HOME/micromamba/envs/*/ \
+  $HOME/.conda/envs/*/ 2>/dev/null)
+RUN=""
+for prefix in $ENV_PATHS; do
+  name=$(basename "$prefix")
+  if micromamba run -n "$name" python -m pytest --version >/dev/null 2>&1; then
+    RUN="micromamba run -n $name"; break
+  fi
+done
+if [ -z "$RUN" ]; then
+  if command -v python >/dev/null 2>&1 && python -m pytest --version >/dev/null 2>&1; then
+    RUN=""
+  else
+    echo "ERROR: no env with pytest found" >&2; exit 1
+  fi
 fi
 
 REPO=$(git rev-parse --show-toplevel 2>/dev/null || ls -d /workspaces/*/ 2>/dev/null | head -1 | sed 's|/$||')
@@ -145,11 +181,12 @@ rm -f "$REPORT"
    - Line and branch coverage percentage
    - Specific uncovered lines and branches
    - Flag files below 85% coverage
+   - Surface the specific uncovered lines/branches as a first-class finding per changed file, not only the 85% flag — say what is not exercised
 
 3. Build a source-to-test mapping using only the changed source files from the branch diff:
    - Match $SRC/foo.py → $TESTS/test_foo.py by filename convention (flat layout — no intermediate package dir)
    - For __init__.py / __main__.py: match $SRC/pkg/__init__.py → $TESTS/test_pkg_init.py or $TESTS/test_pkg.py
-   - Changed files with no corresponding test file are **Untested** — flag in report
+   - Changed files with no corresponding test file are **Untested** — flag in report, BUT provenance-calibrated: do not flag vendored / one-time / generated source (`vendor/`, `third_party/`, `generated/`, or a docstring saying "one-time") as Untested — those legitimately have no tests
    - Unchanged source files are out of scope — do not analyze them
 
 4. For each changed source file that has a corresponding test file, spawn PARALLEL subagents to identify mutation gaps across multiple files at the same time. Pass each subagent:
@@ -188,17 +225,19 @@ rm -f "$REPORT"
    - Report at most 5 mutation gaps per source file. If more exist, keep the 5 most likely to mask a real bug and note "plus N additional gaps omitted:" along with file:line of each omitted gap.
    - If no meaningful gaps exist, return: NO GAPS FOUND
 
-5. Spawn a single subagent to review the test files corresponding to changed source files. Pass it those test file contents and the same scoped source context used in step 4 (the enclosing functions/classes for changed lines — same scope rules). Ask it to identify:
+5. Spawn a single subagent to review the test files corresponding to changed source files. Pass it those test file contents and the same scoped source context used in step 4 (the enclosing functions/classes for changed lines — same scope rules), plus the candidate-dead-test list from the **Removed code** section above. Ask it to identify:
 
    - **Tautological** — assertion cannot fail regardless of whether the code under test is correct (asserting a value the test itself computed, asserting a value determined entirely by mock setup rather than code logic, asserting only that no exception was raised when a return value is assertable, asserting shape or type when actual values are accessible and meaningful)
    - **Redundant** — would pass or fail for the exact same reason as another test; removing it loses no unique behavioral coverage
    - **Missing error paths** — exception or error branches visible in the source with no corresponding test
+   - **Dead (removed-code)** — the test references a symbol or module removed in this diff (see the candidate-dead-test list): it now errors on import/call, or still runs but asserts nothing meaningful. Classify broken vs vacuous.
+   - **Obsolete / superseded** — the test exercises behavior that no longer exists, or is fully superseded by a newer test (same coverage, no unique assertion)
 
    Instruct the subagent: flag only cases where a test either cannot fail or provides zero unique coverage. Do not flag style, naming, or organizational issues.
 
    Output format per finding:
 
-       [TAUTOLOGICAL | REDUNDANT | MISSING ERROR PATH] test_file.py::TestClass::test_name
+       [TAUTOLOGICAL | REDUNDANT | MISSING ERROR PATH | DEAD | OBSOLETE] test_file.py::TestClass::test_name
        REASON: <one sentence>
        FIX: strengthen assertion | remove test | add test for: <description>
 
@@ -222,5 +261,7 @@ rm -f "$REPORT"
    - Tautological/redundant tests worth fixing: N
    - Tautological/redundant tests that should be removed: N
    - Missing error paths worth adding: N
+   - Dead tests (reference removed code) worth fixing/removing: N
+   - Obsolete/superseded tests worth removing: N
 
 7. Do not modify any files. Do not commit anything. Present findings only and wait for explicit instruction.
