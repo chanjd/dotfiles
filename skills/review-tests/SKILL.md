@@ -140,36 +140,65 @@ CHANGED_TESTS=""
 for src_file in $(git -C "$REPO" diff --name-only --diff-filter=ACM $BASE..HEAD | grep -E '\.py$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'); do
   CHANGED_SRC="$CHANGED_SRC $src_file"
   base=$(basename "$src_file" .py)
+  # Dotted import path: strip a leading src/ or lib/ root, drop .py, / -> .
+  mod=$(echo "$src_file" | sed -E 's#^.*/(src|lib)/##; s#^(src|lib)/##; s#\.py$##; s#/#.#g')
+  # For __init__/__main__ the meaningful name is the package dir, not the file.
   if [ "$base" = "__init__" ] || [ "$base" = "__main__" ]; then
-    parent=$(basename $(dirname "$src_file"))
-    suffix=${base#__}; suffix=${suffix%__}
-    test_file=$(find "$TESTS" \( -name "test_${parent}_${suffix}.py" -o -name "test_${parent}.py" \) 2>/dev/null)
+    stem=$(basename "$(dirname "$src_file")")
   else
-    test_file=$(find "$TESTS" -name "test_${base}.py" 2>/dev/null)
+    stem=$base
   fi
-  [ -n "$test_file" ] && CHANGED_TESTS="$CHANGED_TESTS $test_file"
+  # Discover candidate tests by REFERENCE, not name alone: union of
+  #  (a) exact convention test_<stem>.py, (b) any test_*<stem>*.py (suffix/prefix
+  #  variants like _engine), (c) any test file that imports/mentions the dotted
+  #  module path or its basename. (c) is what catches feature-named tests (e.g.
+  #  a batch-integration test exercising an engine module). Over-inclusion is
+  #  safe here (a few extra test files run under coverage); the old basename-only
+  #  match produced false "Untested" — the worse failure.
+  cands=$(
+    {
+      find "$TESTS" -name "test_${stem}.py" 2>/dev/null
+      find "$TESTS" -name "test_*${stem}*.py" 2>/dev/null
+      grep -rlE "\b${mod}\b|\b${stem}\b" "$TESTS" --include='*.py' 2>/dev/null
+    } | sort -u
+  )
+  CHANGED_TESTS="$CHANGED_TESTS $cands"
 done
+CHANGED_TESTS=$(echo "$CHANGED_TESTS" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ')
 
+# Coverage is the source of truth for "is this file exercised", not the filename
+# mapping. Always run it; if no candidate tests were discovered, fall back to the
+# whole suite so a changed file is confirmed uncovered rather than assumed so.
+# NOTE: keep --cov at the package/dir root ($SRC). Scoping --cov to a single
+# dotted submodule can trigger a second import of heavy deps (e.g. a NumPy
+# reload) and corrupt the run; filter to changed files in the summary instead.
 if [ -z "$CHANGED_TESTS" ]; then
-  echo "No test files found for changed source files."
+  echo "No test file references found by name or import; running the full suite so coverage is authoritative."
+  COV_TESTS="$TESTS"
 else
-  PYTHONPATH="$TESTS" $RUN python -m pytest $CHANGED_TESTS --cov="$SRC" --cov-branch --cov-report=term-missing --cov-report=json:"$REPORT" -q 2>&1
-  $RUN python -c "
+  COV_TESTS="$CHANGED_TESTS"
+fi
+PYTHONPATH="$TESTS" $RUN python -m pytest $COV_TESTS --cov="$SRC" --cov-branch --cov-report=term-missing --cov-report=json:"$REPORT" -q 2>&1
+$RUN python -c "
 import json, os
 repo = '$REPO'
 changed_rel = [f for f in '$CHANGED_SRC'.split() if f]
-changed_abs = {os.path.join(repo, f) for f in changed_rel}
 with open('$REPORT') as f:
     data = json.load(f)
+matched = set()
 for path, info in sorted(data['files'].items()):
-    if changed_abs and path not in changed_abs and not any(path.endswith('/' + f) for f in changed_rel):
+    rel = next((f for f in changed_rel if path == os.path.join(repo, f) or path.endswith('/' + f)), None)
+    if rel is None:
         continue
+    matched.add(rel)
     pct = info['summary']['percent_covered']
     missing = info['missing_lines']
     branches = ', '.join(f'{a}->{b}' for a, b in info['missing_branches'])
-    print(f'{path}: {pct:.1f}% | missing lines: {missing} | missing branches: {branches}')
+    print(f'{rel}: {pct:.1f}% | missing lines: {missing} | missing branches: {branches}')
+for rel in changed_rel:
+    if rel not in matched:
+        print(f'{rel}: 0.0% | not exercised by any test in this run (Untested unless vendored/one-time/generated)')
 "
-fi
 rm -f "$REPORT"
 `
 
@@ -183,11 +212,21 @@ rm -f "$REPORT"
    - Flag files below 85% coverage
    - Surface the specific uncovered lines/branches as a first-class finding per changed file, not only the 85% flag — say what is not exercised
 
-3. Build a source-to-test mapping using only the changed source files from the branch diff:
-   - Match $SRC/foo.py → $TESTS/test_foo.py by filename convention (flat layout — no intermediate package dir)
-   - For __init__.py / __main__.py: match $SRC/pkg/__init__.py → $TESTS/test_pkg_init.py or $TESTS/test_pkg.py
-   - Changed files with no corresponding test file are **Untested** — flag in report, BUT provenance-calibrated: do not flag vendored / one-time / generated source (`vendor/`, `third_party/`, `generated/`, or a docstring saying "one-time") as Untested — those legitimately have no tests
-   - Unchanged source files are out of scope — do not analyze them
+3. Build the source-to-test mapping from the detect block's REFERENCE-based
+   discovery (exact `test_<stem>.py`, `test_*<stem>*.py` variants, and any test
+   file importing/mentioning the module path or basename) — NOT a bare basename
+   guess. A filename convention alone silently misses suffix-named tests
+   (`test_foo_engine.py`) and feature-named tests, producing false "Untested".
+   Coverage, not the filename, decides whether a file is exercised:
+   - **Untested = the coverage report shows the changed file at 0% or "not
+     exercised by any test in this run"** — flag it, BUT provenance-calibrated:
+     do not flag vendored / one-time / generated source (`vendor/`,
+     `third_party/`, `generated/`, or a docstring saying "one-time"), which
+     legitimately have no tests.
+   - A changed file with >0% coverage IS tested; hand its discovered test
+     file(s) to the mutation-gap subagents even when the filename does not match
+     the source basename.
+   - Unchanged source files are out of scope — do not analyze them.
 
 4. For each changed source file that has a corresponding test file, spawn PARALLEL subagents to identify mutation gaps across multiple files at the same time. Pass each subagent:
    - The functions or classes from the source file that contain changed lines
