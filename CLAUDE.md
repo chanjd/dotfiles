@@ -5,6 +5,7 @@
 - If something goes sideways, stop and re-plan — do not keep pushing
 - Write detailed specs upfront to reduce ambiguity
 - Use plan mode for verification steps, not just building
+- When entering plan mode for a non-trivial PR or feature, invoke the plan-contract skill and include its output in the plan
 
 ### Subagent Strategy
 - Delegate vs inline by context hygiene — default to delegating any step whose OUTPUT you'd skim, not keep (whole-file or multi-file reads, wide greps, long logs, exploration) to a subagent that returns only the conclusion. Keep the judgment spine (intent, design, contracts, done-call) inline; don't delegate small/quick lookups (overhead > savings) or detail you need for ongoing judgment.
