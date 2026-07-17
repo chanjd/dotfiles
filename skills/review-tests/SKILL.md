@@ -72,7 +72,7 @@ find $TESTS/ -name "test_*.py" | sort
 
 ## Changed source files
 
-!`BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -E '\.py$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'`
+!`BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); git diff --name-only --diff-filter=ACM $BASE..HEAD | grep -E '\.py$' | grep -Ev '(^tests/|^test/|/tests/|/test/|test_.*\.py$|_test\.py$|conftest\.py$)'; true`
 
 ## Changed file diffs
 
@@ -92,11 +92,12 @@ echo "--- tests referencing removed symbols (CANDIDATE dead tests) ---"
 if [ -n "$TESTS" ] && [ -n "$REMOVED" ]; then
   for s in $REMOVED; do
     hits=$(grep -rnw --include='*.py' "$s" "$TESTS" 2>/dev/null | head -10)
-    [ -n "$hits" ] && { echo "== $s =="; echo "$hits"; }
+    if [ -n "$hits" ]; then echo "== $s =="; echo "$hits"; fi
   done
 else
   echo "(no removed symbols, or no tests dir)"
 fi
+true
 `
 
 ## Run coverage and summarize
