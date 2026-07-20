@@ -90,17 +90,22 @@ def git_segment(d):
     if acwd == home_claude or acwd.startswith(home_claude + os.sep):
         return ""
     try:
+        # One call yields both: line 1 = branch, line 2 = repo toplevel.
         head = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"],
+            ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD", "--show-toplevel"],
             capture_output=True,
             text=True,
             timeout=0.5,
         )
     except Exception:
         return ""
-    if head.returncode != 0 or not head.stdout.strip():
+    if head.returncode != 0:
         return ""
-    name = head.stdout.strip()
+    lines = head.stdout.split("\n")
+    name = lines[0].strip()
+    if not name:
+        return ""
+    repo = os.path.basename(lines[1].strip()) if len(lines) > 1 and lines[1].strip() else ""
     dirty = ""
     try:
         st = subprocess.run(
@@ -113,7 +118,8 @@ def git_segment(d):
             dirty = "*"
     except Exception:
         pass
-    return f"{DIM}{name}{dirty}{RST}"
+    label = f"{repo} {name}" if repo else name
+    return f"{DIM}{label}{dirty}{RST}"
 
 
 def render_ctx(d):
