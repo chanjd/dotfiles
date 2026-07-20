@@ -30,38 +30,40 @@ local-only git repo; the helper initializes it on first use):
 
     ~/.claude/tools/memory_git.sh "<memdir>" "memory: pre-audit snapshot"
 
-Then act by tier — the dividing line is *information loss*, not effort:
+**Delegate the reading — keep this context clean.** The detector only *names* the
+flagged files; do not read their bodies here. Fan out one proposer per flagged
+file (in parallel), routed by task difficulty, each returning proposals only (no
+edits — the orchestrator applies):
 
-- **Tier A — auto, no confirmation (consistency fixes, nothing is lost):**
-  - Files not in `MEMORY.md` → add a one-line index entry (<~150 chars, accurate).
-  - Index link → a file that no longer exists → remove the dangling pointer.
-  - Dead `[[wikilinks]]` → repoint to the right slug, or de-bracket if the target
-    is a skill/external thing (not a memory). Leave as a forward ref only if you
-    will create that memory now.
-  - **Bloated `MEMORY.md` index lines** (flagged over ~200 chars; convention is
-    ~150). `MEMORY.md` is loaded EVERY session, so it must be a terse pointer
-    index — title + one-line hook — with detail in the topic file. Condense each
-    over-long line to a pointer, but FIRST confirm the detail it carries already
-    lives in the topic file body; if the index is the only place that detail
-    exists, migrate it into the file before trimming (that migration step is the
-    only reason this isn't purely mechanical — done right, nothing is lost).
-  These fix pointers/bloat; they do not delete knowledge, so just do them.
+- **Haiku — straight read / summarize / format (no fact reconciliation):** write
+  a one-line index entry (<~150 chars) for a file missing from `MEMORY.md`;
+  condense a bloated index line (flagged >~200 chars) to a title + one-line hook,
+  first confirming that detail already lives in the topic body (a lookup) and
+  flagging it to migrate if the index is its only home; propose dead
+  `[[wikilink]]` / index-link repoints (or de-bracket a skill/external target).
+- **Sonnet — fact reconciliation against live state (Haiku is not enough here):**
+  resolve the OPEN/DEFERRED/PAUSED/SHELVED/TODO/NEXT markers by checking the
+  referenced repos/paths/git, returning per marker still-true / resolved /
+  superseded + concrete evidence; and judge any changelog-stack collapse or
+  Tier-C candidate where information could be lost.
 
-- **Tier B — auto only WITH proof, then report (evidence-gated):**
-  - The OPEN/DEFERRED/PAUSED/SHELVED/TODO/NEXT markers were true when written but
-    may be resolved. Spawn ONE **Sonnet** subagent to read the flagged files and
-    check the referenced repos/paths/git, returning per marker:
-    still-true / resolved / superseded, each with concrete evidence.
-  - Drop a marker or fact ONLY when the subagent gives positive evidence it is
-    resolved/superseded (e.g. git shows the DEFERRED PR merged). Collapse a
-    changelog stack (old fact + its correction) into the single current line.
-    Update the matching index line. No evidence → it becomes Tier C, do not guess.
+One task per subagent; give each the file(s) to read itself, not pasted text.
+Then apply by tier — the dividing line is *information loss*, not effort:
 
-- **Tier C — confirm with the user first (destructive or unprovable):**
-  - Deleting an entire memory file.
-  - Removing any fact/marker you could NOT verify as resolved.
-  - Any collapse where information might be lost.
-  List these with your reasoning and ask before touching them.
+- **Tier A — auto, nothing lost:** apply the Haiku proposals (missing index
+  entries, dangling-link removals, `[[wikilink]]` repoints, condensations). If a
+  bloated line's detail is not already in the body, migrate it in before trimming;
+  leave a `[[link]]` as a forward ref only if you will create that memory now.
+  These fix pointers/bloat, not knowledge — just do them.
+- **Tier B — auto only WITH proof:** drop a marker or fact ONLY on the Sonnet
+  verifier's positive evidence it is resolved/superseded (e.g. git shows the
+  DEFERRED PR merged). Collapse a changelog stack (old fact + its correction) into
+  the single current line and update the matching index line. No evidence → it
+  becomes Tier C; do not guess.
+- **Tier C — confirm with the user first (destructive or unprovable):** deleting
+  an entire memory file; removing any fact/marker you could NOT verify as
+  resolved; any collapse where information might be lost. List these with your
+  reasoning and ask before touching them.
 
 **Finally:** commit the cleaned state (`~/.claude/tools/memory_git.sh "<memdir>" "memory: audit cleanup"`)
 and report concisely — what you auto-fixed (A), what you pruned with evidence (B),
