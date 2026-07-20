@@ -12,9 +12,9 @@ disable-model-invocation: false
 # ~/.local/share/mamba/envs, ~/micromamba/envs, etc.), then pick the first env
 # that actually has pytest (not merely the alphabetically-first env).
 ENV_PATHS=$(micromamba env list 2>/dev/null | awk '$NF ~ /\// {print $NF}')
-[ -z "$ENV_PATHS" ] && ENV_PATHS=$(ls -d $HOME/scratch/conda/envs/*/ \
-  $HOME/.local/share/mamba/envs/*/ $HOME/micromamba/envs/*/ \
-  $HOME/.conda/envs/*/ 2>/dev/null)
+[ -z "$ENV_PATHS" ] && ENV_PATHS=$(ls -d ${CONDA_ENV_DIRS:+$CONDA_ENV_DIRS/*/} \
+  $HOME/scratch/conda/envs/*/ $HOME/.local/share/mamba/envs/*/ \
+  $HOME/micromamba/envs/*/ $HOME/.conda/envs/*/ 2>/dev/null)
 
 ENV_NAME=""; RUN=""
 for prefix in $ENV_PATHS; do
@@ -104,9 +104,9 @@ true
 
 !`
 ENV_PATHS=$(micromamba env list 2>/dev/null | awk '$NF ~ /\// {print $NF}')
-[ -z "$ENV_PATHS" ] && ENV_PATHS=$(ls -d $HOME/scratch/conda/envs/*/ \
-  $HOME/.local/share/mamba/envs/*/ $HOME/micromamba/envs/*/ \
-  $HOME/.conda/envs/*/ 2>/dev/null)
+[ -z "$ENV_PATHS" ] && ENV_PATHS=$(ls -d ${CONDA_ENV_DIRS:+$CONDA_ENV_DIRS/*/} \
+  $HOME/scratch/conda/envs/*/ $HOME/.local/share/mamba/envs/*/ \
+  $HOME/micromamba/envs/*/ $HOME/.conda/envs/*/ 2>/dev/null)
 RUN=""
 for prefix in $ENV_PATHS; do
   name=$(basename "$prefix")
