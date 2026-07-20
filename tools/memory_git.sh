@@ -20,7 +20,10 @@ if [ -z "$memdir" ] || [ ! -d "$memdir" ]; then
     exit 0
 fi
 
-if ! git -C "$memdir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+# Check for $memdir's OWN .git, not `rev-parse --is-inside-work-tree`: the latter
+# is true when $memdir merely sits inside a parent repo, which would make the
+# commit below land in that parent (leaking private memory into e.g. a home repo).
+if [ ! -d "$memdir/.git" ]; then
     git -C "$memdir" init -q
     git -C "$memdir" config user.name "claude-memory"
     git -C "$memdir" config user.email "claude-memory@localhost"

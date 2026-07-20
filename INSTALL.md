@@ -28,17 +28,17 @@ Let `REPO` = this repository's directory, `DEST` = `$HOME/.claude`.
 another tool set). Deep-merge repo keys in; never replace the file.
 
 - If `$DEST/settings.json` is absent → copy `$REPO/settings.json`.
-- If present → merge with `jq`, local as the base so local wins on scalar
-  conflicts, then eyeball the result:
+- If present → deep-merge with `jq`, putting local **last** so it wins on scalar
+  conflicts (non-destructive: machine-local values and any settings another tool
+  manages are preserved, while repo still contributes keys local lacks):
 
-      jq -s '.[0] * .[1]' "$DEST/settings.json" "$REPO/settings.json" > /tmp/settings.merged.json
+      jq -s '.[0] * .[1]' "$REPO/settings.json" "$DEST/settings.json" > /tmp/settings.merged.json
 
-  `*` recursively merges objects; arrays and scalars from the second file
-  override. Because local is `.[0]` and repo is `.[1]`, **repo values win on
-  scalars** — flip the order (`"$REPO"` then `"$DEST"`) if you instead want
-  local to win. Diff `/tmp/settings.merged.json` against the current file, show
-  any key whose value changed, and confirm before writing it back to
-  `$DEST/settings.json`.
+  In `*` the right-hand operand wins on scalar conflicts and objects merge
+  recursively. With repo as `.[0]` and local as `.[1]`, **local wins**. Diff
+  `/tmp/settings.merged.json` against the current file, surface any key whose
+  value changed, and confirm before writing it back to `$DEST/settings.json`.
+  Flip the operand order if you want a specific repo rule change to win instead.
 
 ## 3. skills — reconcile per skill, never silent-overwrite
 
