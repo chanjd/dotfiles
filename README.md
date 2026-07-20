@@ -8,13 +8,12 @@ Claude Code configuration — CLAUDE.md, skills, and helper tools.
 git clone https://github.com/chanjd/dotfiles.git && bash dotfiles/install.sh
 ```
 
-Installs:
-- `~/.claude/CLAUDE.md` — behavioral defaults and conventions
-- `~/.claude/settings.json` — pre-commit ruff hook (skip this copy in environments where another tool manages settings.json)
-- `~/.claude/skills/` — slash command skills
-- `~/.claude/tools/` — helper scripts (statusline, token report, memory audit)
-- `~/.claude/my-statusline.sh` — statusline wrapper (wire manually, see below)
+`install.sh` is slim and additive — it installs only the artifacts that cannot conflict with local state:
+- `~/.claude/tools/` — helper scripts (statusline, token report, memory audit, memory-git bootstrap)
+- `~/.claude/my-statusline.sh` — statusline wrapper (wire it, see below)
 - `ruff` — required for the lint skill and pre-commit hook
+
+The conflict-prone artifacts (`CLAUDE.md`, `settings.json`, skills) are **not** copied by the script — a blind overwrite would clobber local edits or settings another tool manages. Reconcile them with an agent by following `INSTALL.md`: open this repo in Claude Code and say "follow INSTALL.md". It diffs repo vs local, jq-merges `settings.json`, reconciles diverged skills, and wires the statusline.
 
 ## Skills
 
@@ -36,10 +35,11 @@ Usage-management toolset. Cost is dominated by context re-processing (~85%); the
 - `ctx_size.py` — statusline context indicator; reads CC statusline JSON, prints `ctx <used>/<win> (%)` colored by absolute tokens (green <300K / orange <500K / red beyond). Right-aligns via `SL_COLS`/`SL_LEFT`/`SL_MARGIN`.
 - `token_report.py` — cost-weighted per-session token breakdown + per-turn cache-miss table over `~/.claude/projects/<key>/*.jsonl`.
 - `memory_audit.py` — mechanical staleness detector for the memory corpus (index drift, dead `[[links]]`, unresolved markers, index bloat, age). Backs the `memory-audit` skill.
+- `memory_git.sh <memdir> "<msg>"` — commit the memory dir, initializing it as a local-only git repo (with a local identity) on first use. Called by `summarize`/`memory-audit` so the recoverability net exists on a fresh machine, not just where `git init` was run by hand.
 
 ## Statusline wiring (manual, per-env)
 
-`install.sh` does NOT edit `settings.json` for the statusline, so it never conflicts with an environment that manages that file. To enable the context indicator:
+`install.sh` does NOT edit `settings.json` for the statusline, so it never conflicts with an environment that manages that file. The statusline shows a right-aligned context indicator and, when the session's cwd is a git repo, the current branch (+`*` when dirty) on the left — blank on home-centered sessions. `INSTALL.md` step 4 wires it via jq; to do it by hand:
 
 1. In `~/.claude/settings.json` set:
    ```json
@@ -50,7 +50,7 @@ Usage-management toolset. Cost is dominated by context re-processing (~85%); the
 
 ## Memory hygiene
 
-Memory (`~/.claude/projects/<key>/memory/`) is machine-local and NOT in this repo (it holds private/project content; this repo is public). Keep it recoverable with a **local** git repo there (`git init`, no remote); `summarize`/`memory-audit` commit around edits so an over-prune is `git diff`/`checkout`-recoverable.
+Memory (`~/.claude/projects/<key>/memory/`) is machine-local and NOT in this repo (it holds private/project content; this repo is public). It is kept recoverable by a **local-only** git repo there (no remote); `summarize`/`memory-audit` commit around every edit via `tools/memory_git.sh`, which `git init`s the repo on first use — so an over-prune is always `git diff`/`checkout`-recoverable, on any machine, with no manual setup.
 
 ## Prerequisites
 

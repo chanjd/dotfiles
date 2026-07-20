@@ -21,9 +21,9 @@ as **current state**, not an archaeological record. Keep the main context clean
 by delegating the heavy reading.
 
 **First, snapshot** so the whole sweep is recoverable (the memory dir is a
-local-only git repo):
+local-only git repo; the helper initializes it on first use):
 
-    git -C <memdir> add -A && git -C <memdir> commit -q -m "memory: pre-audit snapshot" || true
+    ~/.claude/tools/memory_git.sh "<memdir>" "memory: pre-audit snapshot"
 
 Then act by tier — the dividing line is *information loss*, not effort:
 
@@ -58,7 +58,7 @@ Then act by tier — the dividing line is *information loss*, not effort:
   - Any collapse where information might be lost.
   List these with your reasoning and ask before touching them.
 
-**Finally:** commit the cleaned state (`git -C <memdir> commit -am "memory: audit cleanup"`)
+**Finally:** commit the cleaned state (`~/.claude/tools/memory_git.sh "<memdir>" "memory: audit cleanup"`)
 and report concisely — what you auto-fixed (A), what you pruned with evidence (B),
 and what you are asking about (C). If anything looks wrong afterward,
 `git -C <memdir> diff HEAD~1` shows exactly what changed.

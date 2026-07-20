@@ -89,9 +89,10 @@ with `[[name]]`.
 
 After writing, commit the snapshot so every checkpoint is a recoverable restore
 point (the memory dir is a local-only git repo — an over-prune is always
-`git -C <memdir> diff`/`checkout`-recoverable):
+`git -C <memdir> diff`/`checkout`-recoverable). Use the bootstrap helper, which
+initializes the repo on first use so this works on a fresh machine too:
 
-    git -C <memdir> add -A && git -C <memdir> commit -q -m "checkpoint: <active project>, <date>" || true
+    ~/.claude/tools/memory_git.sh "<memdir>" "checkpoint: <active project>, <date>"
 
 Then tell the user it is safe to `/clear` (or `/compact`), name the topic file
 holding the RESUME block, and report what you pruned.

@@ -18,6 +18,7 @@ statusline holds.
 import json
 import os
 import re
+import subprocess
 import sys
 
 # Absolute token thresholds (not % of window): they track BOTH per-turn cost and
@@ -73,6 +74,42 @@ def from_transcript(path):
     return ctx, win
 
 
+def git_segment(d):
+    """Branch (+`*` if dirty) for the payload's cwd; empty when not in a repo.
+
+    Returns "" on home-centered / non-repo sessions so the segment silently
+    disappears. Never raises — the statusline must always render.
+    """
+    cwd = d.get("cwd") or (d.get("workspace") or {}).get("current_dir")
+    if not cwd:
+        return ""
+    try:
+        head = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=0.5,
+        )
+    except Exception:
+        return ""
+    if head.returncode != 0 or not head.stdout.strip():
+        return ""
+    name = head.stdout.strip()
+    dirty = ""
+    try:
+        st = subprocess.run(
+            ["git", "-C", cwd, "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=0.5,
+        )
+        if st.returncode == 0 and st.stdout.strip():
+            dirty = "*"
+    except Exception:
+        pass
+    return f"{DIM}{name}{dirty}{RST}"
+
+
 def render_ctx(d):
     got = from_payload(d) or from_transcript(d.get("transcript_path"))
     if not got:
@@ -92,7 +129,12 @@ def main():
         d = {}
     ctx_str = render_ctx(d)
 
+    git_seg = git_segment(d)
     left = os.environ.get("SL_LEFT", "")
+    if git_seg and left:
+        left = f"{git_seg} {left}"
+    elif git_seg:
+        left = git_seg
     try:
         cols = int(os.environ.get("SL_COLS", "0"))
     except ValueError:

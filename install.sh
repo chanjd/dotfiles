@@ -1,40 +1,41 @@
 #!/usr/bin/env bash
+# Slim, additive install. Only handles artifacts that cannot meaningfully
+# conflict with local state: the helper tools, the statusline wrapper, and ruff.
+#
+# The conflict-prone artifacts (CLAUDE.md, settings.json, and the skills) are
+# NOT touched here — a blind copy would clobber local edits or settings another
+# tool manages. Reconcile those with an agent using INSTALL.md.
 set -e
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-mkdir -p "$HOME/.claude/skills"
-cp "$DOTFILES_DIR/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
-echo "Installed CLAUDE.md to ~/.claude/CLAUDE.md"
-
-cp "$DOTFILES_DIR/settings.json" "$HOME/.claude/settings.json"
-echo "Installed settings.json to ~/.claude/settings.json"
-
-for skill_dir in "$DOTFILES_DIR/skills"/*/; do
-    skill_name="$(basename "$skill_dir")"
-    mkdir -p "$HOME/.claude/skills/$skill_name"
-    cp "$skill_dir/SKILL.md" "$HOME/.claude/skills/$skill_name/SKILL.md"
-    echo "Installed skill: $skill_name"
-done
-
-# Helper tools (statusline ctx indicator, token-cost report, memory-staleness audit)
+# Helper tools: statusline ctx indicator, token-cost report, memory-staleness
+# audit, and the memory-git bootstrap. These are owned by dotfiles — safe to
+# overwrite (additive: they are new files, not local config).
 mkdir -p "$HOME/.claude/tools"
 cp "$DOTFILES_DIR/tools/"*.py "$HOME/.claude/tools/"
-chmod +x "$HOME/.claude/tools/"*.py
+cp "$DOTFILES_DIR/tools/"*.sh "$HOME/.claude/tools/"
+chmod +x "$HOME/.claude/tools/"*.py "$HOME/.claude/tools/"*.sh
 echo "Installed tools to ~/.claude/tools/"
 
-# Statusline wrapper. Does NOT auto-wire settings.json (it may be managed by
-# another tool in some environments). To enable, point statusLine.command at it.
-# An optional ~/.claude/statusline-left.local.sh (machine-local, untracked) can
-# supply a left-hand segment; without it, only the context indicator shows.
+# Statusline wrapper. Does NOT auto-wire settings.json (that is a reconcile step
+# in INSTALL.md). An optional ~/.claude/statusline-left.local.sh (machine-local,
+# untracked) can supply a left-hand segment; without it, only the context (and,
+# in a git repo, the branch) indicator shows.
 cp "$DOTFILES_DIR/my-statusline.sh" "$HOME/.claude/my-statusline.sh"
 chmod +x "$HOME/.claude/my-statusline.sh"
-echo "Installed my-statusline.sh (wire it in settings.json — see README)"
+echo "Installed my-statusline.sh"
 
-# Install ruff for the lint skill and pre-commit hook
+# Install ruff for the lint skill and pre-commit hook.
 if ! command -v ruff &>/dev/null; then
     pip install ruff -q
     echo "Installed ruff"
 else
     echo "ruff already installed: $(ruff --version)"
 fi
+
+echo
+echo "Next: reconcile CLAUDE.md, settings.json, and skills, and wire the"
+echo "statusline, by following INSTALL.md (an agent playbook — open this repo"
+echo "in Claude Code and ask it to run INSTALL.md). These are not copied here"
+echo "because a blind overwrite would clobber local edits."
