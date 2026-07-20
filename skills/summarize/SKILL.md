@@ -84,8 +84,8 @@ with `[[name]]`.
   replaced (file: what/why) so the user can catch an over-prune immediately.
 - Do NOT save what is derivable from current file state, git history, or
   CLAUDE.md. Only record what is non-obvious and useful for future sessions.
-- If cwd is a git repo AND an `AGENTS.md` / `.ona/agents.md` exists, update its
-  "Current Branch" / "Next" sections. If neither exists, skip — do not create one.
+- If cwd is a git repo AND an `AGENTS.md` exists, update its "Current Branch" /
+  "Next" sections. If it does not exist, skip — do not create one.
 
 After writing, commit the snapshot so every checkpoint is a recoverable restore
 point (the memory dir is a local-only git repo — an over-prune is always

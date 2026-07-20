@@ -1,6 +1,6 @@
 ---
 name: review-portability
-description: Analyze a codebase for portability issues — assumptions that hold in the dev environment (Gitpod, local container) but break on HPC, CI, or a colleague's machine. Trigger when the user asks about portability, hardcoded paths, env assumptions, "will this work on HPC", or before a handoff or release. Also trigger proactively if you notice hardcoded paths, bare open() calls, or os.environ[] without guards during any code review.
+description: Analyze a codebase for portability issues — assumptions that hold in the dev environment (a local container) but break on CI or a colleague's machine. Trigger when the user asks about portability, hardcoded paths, env assumptions, "will this work elsewhere", or before a handoff or release. Also trigger proactively if you notice hardcoded paths, bare open() calls, or os.environ[] without guards during any code review.
 ---
 
 # Portability Review

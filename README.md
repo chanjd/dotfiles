@@ -46,7 +46,7 @@ Usage-management toolset. Cost is dominated by context re-processing (~85%); the
    "statusLine": { "type": "command", "command": "<HOME>/.claude/my-statusline.sh", "refreshInterval": 360 }
    ```
 2. If another tool already renders a statusline, disable that tool's statusline first so this one takes effect.
-3. Optional left segment: drop an executable `~/.claude/statusline-left.local.sh` that prints a left-hand string (e.g. a usage bar). It's machine-local and untracked; without it, only the context indicator shows (e.g. gitpod/ona).
+3. Optional left segment: drop an executable `~/.claude/statusline-left.local.sh` that prints a left-hand string (e.g. a usage bar). It's machine-local and untracked; without it, only the context indicator shows.
 
 ## Memory hygiene
 
@@ -54,6 +54,6 @@ Memory (`~/.claude/projects/<key>/memory/`) is machine-local and NOT in this rep
 
 ## Prerequisites
 
-- `catchup`/`summarize` read memory from `~/.claude/projects/<repo-path-as-key>/memory/` — graceful if absent. They update an `.ona/agents.md` or `AGENTS.md` only if one already exists (they do not create one).
+- `catchup`/`summarize` read memory from `~/.claude/projects/<repo-path-as-key>/memory/` — graceful if absent. They update an `AGENTS.md` only if one already exists (they do not create one).
 - `review-pr`/`review-tests` require a remote `origin` with a fetched main/master (they scope via `git merge-base HEAD origin/main`).
-- `review-tests` finds a test env via `micromamba`/`conda env list`, common conda roots (or `$CONDA_ENV_DIRS`), and falls back to the **active `python`** if it has pytest — so it works in a container/venv (e.g. gitpod/ona) too, no conda required. Needs pytest + pytest-cov; source under `src/` or a top-level package; tests in `tests/`/`test/`.
+- `review-tests` finds a test env via `micromamba`/`conda env list`, common conda roots (or `$CONDA_ENV_DIRS`), and falls back to the **active `python`** if it has pytest — so it works in a container/venv too, no conda required. Needs pytest + pytest-cov; source under `src/` or a top-level package; tests in `tests/`/`test/`.

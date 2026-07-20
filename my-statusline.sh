@@ -4,7 +4,7 @@
 #
 # Left segment (optional): if an executable machine-local provider exists at
 # ~/.claude/statusline-left.local.sh, its stdout is shown on the left (e.g. a
-# usage bar). Absent (e.g. gitpod/ona) → only the context indicator is shown.
+# usage bar). Absent → only the context indicator is shown.
 # The provider is machine-local and NOT tracked in dotfiles.
 #
 # Wiring: point settings.json statusLine.command at this file.

@@ -29,7 +29,7 @@ directory key, not the git root.
 
 ## Optional agents file (only if present in cwd repo)
 
-!`ROOT=$(git rev-parse --show-toplevel 2>/dev/null); AGENTS=$([ -f "$ROOT/.ona/agents.md" ] && echo "$ROOT/.ona/agents.md" || echo "$ROOT/AGENTS.md"); [ -f "$AGENTS" ] && cat "$AGENTS" || echo "(no agents file — auto-memory is the source of truth here)"`
+!`ROOT=$(git rev-parse --show-toplevel 2>/dev/null); AGENTS="$ROOT/AGENTS.md"; [ -f "$AGENTS" ] && cat "$AGENTS" || echo "(no agents file — auto-memory is the source of truth here)"`
 
 ---
 
