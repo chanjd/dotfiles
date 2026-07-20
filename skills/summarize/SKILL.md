@@ -77,6 +77,20 @@ single-thread project, wrap the existing flat block in a `### <thread-slug>`
 sub-block for the original thread, then add the new one. Do NOT invent threads
 for a single-thread project — keep it flat.
 
+**Thread hygiene — keep the whole list current, not just the worked thread.**
+Work often moves from one thread to the next within a project without a fresh
+`catchup`, so threads accumulate and go stale. When checkpointing a multi-thread
+project, review ALL its thread sub-blocks — but edit a thread you did NOT work
+this session ONLY on positive evidence from this session (same bar as
+prune-on-touch; never on suspicion or merely "not worked this session"):
+- finished or abandoned this session → mark its status `[done]`, or remove the
+  sub-block entirely if its durable conclusions already live in the file body
+  (nothing lost);
+- status genuinely changed (blocker cleared, parked→active) → update its `[...]` tag;
+- no new evidence → leave it VERBATIM (it may be intentionally parked, or owned by
+  another terminal). `memory-audit` is the periodic backstop that removes `[done]`/
+  stale threads with proof.
+
 Keep it tight and load-bearing. Prefer **pointers to re-verifiable ground truth**
 (file paths, function names, artifact/run locations, commit SHAs) over prose
 restatements of facts — a pointer survives paraphrase; a restated fact can drift.

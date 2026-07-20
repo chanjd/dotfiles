@@ -30,6 +30,7 @@ fi
 # inside a parent repo — that would leak private memory into the parent).
 if [ ! -d "$memdir/.git" ]; then
     git -C "$memdir" init -q
+    git -C "$memdir" symbolic-ref HEAD refs/heads/main 2>/dev/null || true
     git -C "$memdir" config user.name "claude-memory"
     git -C "$memdir" config user.email "claude-memory@localhost"
     echo "memory_git: initialized local-only repo at $memdir" >&2

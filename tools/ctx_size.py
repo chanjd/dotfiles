@@ -83,6 +83,12 @@ def git_segment(d):
     cwd = d.get("cwd") or (d.get("workspace") or {}).get("current_dir")
     if not cwd:
         return ""
+    # Anything under ~/.claude (the memory local-only repo, etc.) is local-only
+    # plumbing, not work — don't surface its branch; it's noise.
+    home_claude = os.path.join(os.path.expanduser("~"), ".claude")
+    acwd = os.path.abspath(cwd)
+    if acwd == home_claude or acwd.startswith(home_claude + os.sep):
+        return ""
     try:
         head = subprocess.run(
             ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"],
