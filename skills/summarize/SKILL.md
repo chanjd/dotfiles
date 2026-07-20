@@ -39,8 +39,10 @@ reasoning thread of the task in flight — which is exactly what is lost on a
 
 Identify the active project (what this session actually worked on — use cwd, git,
 and the topic file that matches). At the **top of that project's topic file**,
-maintain a `## RESUME` block (create it if absent, **overwrite it if present** —
-it is a live pointer, not accumulating history):
+maintain a `## RESUME` block (create it if absent). A project may have one or
+several parallel threads (features/experiments) in flight:
+
+- **One thread** — a flat bullet list under `## RESUME`:
 
 ```
 ## RESUME (updated <YYYY-MM-DD>)
@@ -50,6 +52,30 @@ it is a live pointer, not accumulating history):
 - Open questions / in flight: anything unresolved or waiting (jobs, reviews).
 - Gotchas: commands, paths, flags that worked or bit us this session.
 ```
+
+- **Multiple parallel threads** — one `### <thread-slug>` sub-block per thread,
+  each with the same bullets, under a single `## RESUME (updated <date>)` header:
+
+```
+## RESUME (updated <YYYY-MM-DD>)
+### <thread-slug> — <one-line status> [active | parked | blocked: <what>]
+- State: ...
+- Next: ...
+- Decisions + WHY: ...
+- Open / in flight: ...
+- Gotchas: ...
+### <other-thread-slug> — ...
+- ...
+```
+
+**Update only the thread(s) this session actually worked on:** overwrite that
+thread's sub-block (it is a live pointer, not accumulating history) and **leave
+every sibling thread's sub-block VERBATIM**; bump only the top `(updated <date>)`
+stamp. This is what lets parallel threads coexist — following up on one never
+clears the others. When a second thread first appears in a previously
+single-thread project, wrap the existing flat block in a `### <thread-slug>`
+sub-block for the original thread, then add the new one. Do NOT invent threads
+for a single-thread project — keep it flat.
 
 Keep it tight and load-bearing. Prefer **pointers to re-verifiable ground truth**
 (file paths, function names, artifact/run locations, commit SHAs) over prose

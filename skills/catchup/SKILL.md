@@ -52,6 +52,12 @@ the `catchup` / `summarize` pair; `summarize` writes the RESUME block.
      RESUME block + add new facts, prune nothing), so it cannot destructively
      edit a project another terminal is actively working on. See `summarize`
      step 2's scope gate.
+   - **If the chosen project's RESUME has multiple `### <thread>` sub-blocks**
+     (parallel features/experiments), scope further to the thread being picked
+     up: focus on that thread's sub-block and read the siblings only for context.
+     If no thread was named and several exist, list them and ask which. `summarize`
+     will then update ONLY that thread's sub-block and leave the siblings verbatim,
+     so resuming one thread never clears the others.
 2. Read the relevant topic files in full (not just the index) for the target
    project — the RESUME block is the live thread; the topic file body is the
    durable detail behind it.
