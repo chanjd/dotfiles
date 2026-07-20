@@ -20,6 +20,11 @@ to the per-session prune-on-touch that `summarize` does. Goal: every file reads
 as **current state**, not an archaeological record. Keep the main context clean
 by delegating the heavy reading.
 
+**Run this solo.** It rewrites the whole corpus and acts on a snapshot; if other
+top-level terminals are checkpointing into the same memory dir concurrently, it
+will act on stale state and its commit may sweep in their in-flight edits. Run it
+when the other sessions are idle or closed.
+
 **First, snapshot** so the whole sweep is recoverable (the memory dir is a
 local-only git repo; the helper initializes it on first use):
 

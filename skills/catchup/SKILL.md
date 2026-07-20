@@ -37,11 +37,21 @@ Resume work. The auto-memory above (RESUME handoff + MEMORY.md + topic files) is
 the primary source of truth here, not git/agents files. This is the read half of
 the `catchup` / `summarize` pair; `summarize` writes the RESUME block.
 
-1. **If the user named a task/project in their invocation** (this skill is
-   usually invoked as `/catchup <what I want to work on this session>`), let that
-   steer everything: focus on that project's topic file and its RESUME block. The
-   newest-file RESUME block shown above is the default thread if they named none —
-   confirm it matches what they asked for before leaning on it.
+1. **Scope the session to one project** (this matters under concurrent
+   terminals — all top-level sessions on this user share ONE memory dir):
+   - **If the user named a task/project** (usual form
+     `/catchup <what I want to work on this session>`), that is the session
+     scope: focus on that project's topic file and its RESUME block.
+   - **If they named nothing**, the newest-file RESUME block above is only a
+     *heuristic* pick — with concurrent sessions the most-recently-modified file
+     may belong to a DIFFERENT terminal's project, not yours. Do not assume it.
+     Say which project it points to, confirm it is the one the user wants, and if
+     that is unclear, ask before leaning on it.
+   - Until the scope is a single, confirmed project, treat this session as
+     **unscoped**: its eventual `summarize` must run **additive-only** (write the
+     RESUME block + add new facts, prune nothing), so it cannot destructively
+     edit a project another terminal is actively working on. See `summarize`
+     step 2's scope gate.
 2. Read the relevant topic files in full (not just the index) for the target
    project — the RESUME block is the live thread; the topic file body is the
    durable detail behind it.

@@ -59,6 +59,20 @@ Writing this block also makes that topic file the most-recently-modified, so
 
 ### 2. Update durable memory for anything that changed
 
+**Scope gate — safe under concurrent terminals.** Multiple top-level sessions
+share one memory dir, so a checkpoint must not reach outside its own project:
+- Only ever edit the **active project's** topic file and its single `MEMORY.md`
+  index line. Never edit another project's topic file — a concurrent terminal
+  may own it. `MEMORY.md` is the one file every project shares, so keep your
+  change to the single line for the active project (that is where concurrent
+  index edits would otherwise collide).
+- **Prune only when the active project is unambiguous.** If this session clearly
+  worked one project (e.g. `catchup` was scoped to it), prune-on-touch within
+  that file as below. If the scope is ambiguous — nothing named at `catchup`
+  (unscoped), or several projects touched — run **additive-only**: write/overwrite
+  the RESUME block and append genuinely new facts, but remove nothing. State
+  which mode you used.
+
 For each memory type that changed this session (user, project, feedback,
 reference), update the relevant topic file, or create one with proper frontmatter
 (`name`, `description`, `metadata.type`). For feedback/project entries lead with
@@ -94,5 +108,11 @@ initializes the repo on first use so this works on a fresh machine too:
 
     ~/.claude/tools/memory_git.sh "<memdir>" "checkpoint: <active project>, <date>"
 
+The helper reports its result: `committed <sha>` on success, or a
+`FAILED … checkpoint NOT saved` line if a concurrent commit race beat it after
+retries. If you see the FAILED line, the snapshot did NOT save — re-run the
+helper before telling the user it is safe to reset.
+
 Then tell the user it is safe to `/clear` (or `/compact`), name the topic file
-holding the RESUME block, and report what you pruned.
+holding the RESUME block, report what you pruned (or that you ran additive-only),
+and confirm the checkpoint committed.
