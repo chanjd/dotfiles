@@ -89,6 +89,10 @@ def git_segment(d):
     acwd = os.path.abspath(cwd)
     if acwd == home_claude or acwd.startswith(home_claude + os.sep):
         return ""
+    # Run background git read-only: GIT_OPTIONAL_LOCKS=0 stops `git status` from
+    # taking .git/index.lock to write back its refreshed index, which would race
+    # a foreground commit/add and fail it ("index.lock: File exists").
+    genv = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
     try:
         # One call yields both: line 1 = branch, line 2 = repo toplevel.
         head = subprocess.run(
@@ -96,6 +100,7 @@ def git_segment(d):
             capture_output=True,
             text=True,
             timeout=0.5,
+            env=genv,
         )
     except Exception:
         return ""
@@ -113,6 +118,7 @@ def git_segment(d):
             capture_output=True,
             text=True,
             timeout=0.5,
+            env=genv,
         )
         if st.returncode == 0 and st.stdout.strip():
             dirty = "*"
