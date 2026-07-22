@@ -110,6 +110,10 @@ def git_segment(d):
     name = lines[0].strip()
     if not name:
         return ""
+    # Cap the branch (repo name is shown separately) so a long branch can't crowd
+    # out the right-aligned ctx indicator; end-truncate with an ellipsis.
+    if len(name) > 25:
+        name = name[:24] + "…"
     repo = os.path.basename(lines[1].strip()) if len(lines) > 1 and lines[1].strip() else ""
     dirty = ""
     try:
