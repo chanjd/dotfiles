@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Global ruff pre-commit hook: report-only gate on the STAGED content.
+#
+# For each staged .py file it pipes the staged blob (git show :<file>) to ruff,
+# so it validates exactly what is being committed. This is deliberately:
+#   - read-only: never runs `git add`, so it never takes .git/index.lock (no
+#     contention with a concurrent git op, no orphaned lock on interrupt) and
+#     never modifies the working tree;
+#   - staged-accurate: checking the blob (not the working-tree copy) means an
+#     unstaged edit can't cause a false pass/fail, and a file staged-then-deleted
+#     from the working tree is still checked.
+# On any violation it prints ruff's output and aborts; fix, re-stage, re-commit.
+#
+# Installed globally via `git config --global core.hooksPath ~/.claude/hooks`.
+# Because a global core.hooksPath overrides every repo's own .git/hooks, this
+# hook chains to the repo-local pre-commit at the end so per-repo hooks still run.
+set -uo pipefail
+
+# Run the repo's own pre-commit too (if present + executable) and let its exit
+# status stand — a global core.hooksPath otherwise silently disables it.
+# --git-common-dir (not --git-dir) resolves the shared hook inside a git
+# worktree, where --git-dir points at the per-worktree admin dir instead.
+chain_repo_hook() {
+    local repo_hook
+    repo_hook="$(git rev-parse --git-common-dir 2>/dev/null)/hooks/pre-commit"
+    # Skip if it resolves to this same script (avoids an exec loop when a repo's
+    # .git/hooks/pre-commit is a copy of this global hook).
+    if [ -x "$repo_hook" ] && ! [ "$repo_hook" -ef "${BASH_SOURCE[0]}" ]; then
+        exec "$repo_hook"
+    fi
+}
+
+# Locate ruff even when ~/.local/bin is not on PATH in the commit shell.
+RUFF="$(command -v ruff || true)"
+if [ -z "$RUFF" ] && [ -x "$HOME/.local/bin/ruff" ]; then
+    RUFF="$HOME/.local/bin/ruff"
+fi
+if [ -z "$RUFF" ]; then
+    echo "pre-commit: ruff not found; install it or add it to PATH. Skipping lint." >&2
+    chain_repo_hook
+    exit 0
+fi
+
+# Staged Python files (added/copied/modified), NUL-delimited for safe filenames.
+mapfile -d '' FILES < <(git diff --cached --name-only --diff-filter=ACM -z -- '*.py')
+if [ "${#FILES[@]}" -eq 0 ]; then
+    chain_repo_hook
+    exit 0
+fi
+
+# Pipe git show directly (not via $(...), which would strip the trailing newline
+# and make `ruff format` demand it back). ruff output goes to stderr so it always
+# shows; run both checks per file so all issues surface in one pass.
+status=0
+for f in "${FILES[@]}"; do
+    git show ":$f" | "$RUFF" check --stdin-filename "$f" - >&2 || status=1
+    git show ":$f" | "$RUFF" format --diff --stdin-filename "$f" - >&2 || status=1
+done
+
+if [ "$status" -ne 0 ]; then
+    # Self-contained summary LAST: agents commonly capture commit output with
+    # `| tail`, which keeps the bottom and drops the diagnostics above. Put the
+    # file list + exact fix command here so a truncated view is still actionable.
+    files="${FILES[*]}"
+    {
+        echo ""
+        echo "pre-commit: ruff blocked ${#FILES[@]} staged file(s) — commit aborted."
+        echo "  files: $files"
+        echo "  fix:   ruff format $files && ruff check --fix $files"
+        echo "         then re-stage (git add $files) and commit again"
+        echo "  (ruff diagnostics printed above; unsafe/manual fixes will re-block until resolved)"
+    } >&2
+    exit 1
+fi
+
+chain_repo_hook
+exit 0

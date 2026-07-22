@@ -26,7 +26,15 @@ cp "$DOTFILES_DIR/my-statusline.sh" "$HOME/.claude/my-statusline.sh"
 chmod +x "$HOME/.claude/my-statusline.sh"
 echo "Installed my-statusline.sh"
 
-# Install ruff for the lint skill and pre-commit hook.
+# Git pre-commit hook (dotfiles-owned, additive). Placing the file is safe; it is
+# NOT wired here — pointing core.hooksPath at it is a reconcile step in INSTALL.md
+# (it overrides every repo's own .git/hooks, so it must be set diff-and-confirm).
+mkdir -p "$HOME/.claude/hooks"
+cp "$DOTFILES_DIR/hooks/pre-commit" "$HOME/.claude/hooks/pre-commit"
+chmod +x "$HOME/.claude/hooks/pre-commit"
+echo "Installed hooks/pre-commit to ~/.claude/hooks/"
+
+# Install ruff, which the lint skill and the pre-commit hook both use.
 if ! command -v ruff &>/dev/null; then
     pip install ruff -q
     echo "Installed ruff"
@@ -36,6 +44,7 @@ fi
 
 echo
 echo "Next: reconcile CLAUDE.md, settings.json, and skills, and wire the"
-echo "statusline, by following INSTALL.md (an agent playbook — open this repo"
-echo "in Claude Code and ask it to run INSTALL.md). These are not copied here"
-echo "because a blind overwrite would clobber local edits."
+echo "statusline and the git pre-commit hook, by following INSTALL.md (an agent"
+echo "playbook — open this repo in Claude Code and ask it to run INSTALL.md)."
+echo "These are not wired here because doing so would clobber local edits or"
+echo "override every repo's own git hooks."

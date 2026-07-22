@@ -69,8 +69,48 @@ Point Claude Code at the wrapper `install.sh` placed at `$DEST/my-statusline.sh`
   shows.
 - If another tool later resets `statusLine.command`, re-run this one jq step.
 
-## 5. Sanity check
+## 5. Wire the git pre-commit hook
+
+`install.sh` placed the hook at `$DEST/hooks/pre-commit` (a report-only ruff gate
+that checks each staged `.py` file's staged blob and blocks the commit on any
+violation; it never runs `git add`). Wiring it means pointing git's global
+`core.hooksPath` at `$DEST/hooks`.
+
+**Warn the user first:** a global `core.hooksPath` overrides every repo's own
+`.git/hooks` for all repos on the machine — repos that install hooks into
+`.git/hooks` (husky, the `pre-commit` framework) have them ignored. The shipped
+hook mitigates this by chaining to the repo-local `.git/hooks/pre-commit` when one
+exists, but confirm the user wants a global hook before proceeding.
+
+Read the current setting: `CUR=$(git config --global core.hooksPath || true)`.
+
+- **unset** → set it:
+
+      git config --global core.hooksPath "$HOME/.claude/hooks"
+
+- **already `$HOME/.claude/hooks`** → nothing to do (idempotent).
+
+- **set to another dir `D`** → default is to **migrate** to `$HOME/.claude/hooks`,
+  because `install.sh` only refreshes `$DEST/hooks` on re-run, so a hook left in
+  `D` goes stale. `core.hooksPath` is all-or-nothing (git reads hooks ONLY from
+  it), so any OTHER hooks in `D` must move too or they stop firing:
+  - Copy every hook in `D` not already in `$DEST/hooks` into `$DEST/hooks`. If `D`
+    holds a `pre-commit` that differs from the shipped one and is not a prior
+    version of it, show the diff and confirm before overwriting.
+  - `git config --global core.hooksPath "$HOME/.claude/hooks"`.
+  - Offer to remove the now-unused hooks from `D`.
+
+  If the user prefers to **keep `D`** instead of migrating: copy
+  `$DEST/hooks/pre-commit` into `D`, but if a *different* `pre-commit` already
+  lives there, show the diff and confirm — never blind-overwrite a user hook
+  (silent upgrade only when the existing file is a prior version of this one).
+  Note that `install.sh` will not refresh that copy on future runs.
+
+## 6. Sanity check
 
 - `echo '{"cwd":"'"$REPO"'","context_window":{"total_input_tokens":1000,"context_window_size":200000}}' | SL_COLS=100 python3 "$DEST/tools/ctx_size.py"`
   should print the branch on the left and the ctx indicator on the right.
 - Restart / refresh Claude Code and confirm the statusline renders.
+- Hook: in a scratch repo (`git init` in a temp dir), stage a malformed Python
+  file (`printf 'import os\n' > x.py; git add x.py`) and `git commit` — it should
+  be blocked by ruff; a clean file should commit.

@@ -11,9 +11,10 @@ git clone https://github.com/chanjd/dotfiles.git && bash dotfiles/install.sh
 `install.sh` is slim and additive — it installs only the artifacts that cannot conflict with local state:
 - `~/.claude/tools/` — helper scripts (statusline, token report, memory audit, memory-git bootstrap)
 - `~/.claude/my-statusline.sh` — statusline wrapper (wire it, see below)
+- `~/.claude/hooks/pre-commit` — report-only ruff pre-commit hook; placed here but not wired (wiring `core.hooksPath` is an `INSTALL.md` step, since it overrides every repo's own `.git/hooks`)
 - `ruff` — required for the lint skill and pre-commit hook
 
-The conflict-prone artifacts (`CLAUDE.md`, `settings.json`, skills) are **not** copied by the script — a blind overwrite would clobber local edits or settings another tool manages. Reconcile them with an agent by following `INSTALL.md`: open this repo in Claude Code and say "follow INSTALL.md". It diffs repo vs local, jq-merges `settings.json`, reconciles diverged skills, and wires the statusline.
+The conflict-prone artifacts (`CLAUDE.md`, `settings.json`, skills) are **not** copied by the script — a blind overwrite would clobber local edits or settings another tool manages. Reconcile them with an agent by following `INSTALL.md`: open this repo in Claude Code and say "follow INSTALL.md". It diffs repo vs local, jq-merges `settings.json`, reconciles diverged skills, and wires the statusline and the git pre-commit hook.
 
 ## Skills
 
